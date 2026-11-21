@@ -42,8 +42,13 @@ def _place(src: Path, dst: Path) -> str:
         return "copied"
 
 
+def default_threads() -> int:
+    """All logical processors except 2, so the computer stays responsive."""
+    return max(1, (os.cpu_count() or 4) - 2)
+
+
 def build_project(odm_dir: Path, photos: list[Path], gcp_list: Path,
-                  cameras: Path | None = None) -> str:
+                  cameras: Path | None = None, threads: int | None = None) -> str:
     """Fill odm_dir/images with the photos, put gcp_list.txt next to it, and write
     odm_command.txt. Photos no longer in the list are removed from odm_dir/images.
     Returns the ODM Console command."""
@@ -61,7 +66,7 @@ def build_project(odm_dir: Path, photos: list[Path], gcp_list: Path,
             counts["removed"] += 1
     shutil.copy2(gcp_list, odm_dir / "gcp_list.txt")
 
-    opts = list(ODM_OPTIONS)
+    opts = list(ODM_OPTIONS) + [f"--max-concurrency {threads or default_threads()}"]
     if cameras:
         opts += [f'--cameras "{Path(cameras).resolve()}"', "--use-fixed-camera-params"]
     cmd = f'run "{odm_dir.resolve()}" ' + " ".join(opts)

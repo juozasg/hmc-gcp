@@ -67,7 +67,8 @@ command, to reuse a lens calibration from an earlier run.
 
 The printed options: `--camera-lens brown --feature-quality ultra --min-num-features 20000
 --pc-quality high --dsm --dem-resolution 4 --orthophoto-resolution 1 --skip-3dmodel
---texturing-skip-global-seam-leveling --build-overviews --cog`. Photo GPS is not forced
+--texturing-skip-global-seam-leveling --build-overviews --cog --max-concurrency N`, with N =
+logical processors minus 2 (`--odm-threads` overrides it). Photo GPS is not forced
 (`--force-gps` is left out), so the GCPs alone set the georeferencing.
 
 ## How it works
@@ -135,6 +136,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | `--no-auto` | Skip automatic acceptance |
 | `--odm-dir` / `--no-odm` | ODM project folder to build on exit / do not build it |
 | `--odm-cameras` | `cameras.json` to reuse in the printed ODM command |
+| `--odm-threads` | ODM `--max-concurrency` (default: logical processors minus 2) |
 | `--export-only` | Write the outputs from saved tags without opening the window |
 | `--window 1500x950` | Window size |
 

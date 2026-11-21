@@ -20,7 +20,7 @@ def _build_odm(s, a, out: Path, sv, r: dict):
     from .odm import build_project, default_dir
     odm_dir = a.odm_dir or default_dir(a.images, sv.folder if sv else None)
     photos = [Path(sh.path) for sh in s.shots.values()]
-    cmd = build_project(odm_dir, photos, out / "gcp_list.txt", a.odm_cameras)
+    cmd = build_project(odm_dir, photos, out / "gcp_list.txt", a.odm_cameras, a.odm_threads)
     if r.get("control", 0) < 3:
         print("WARNING: fewer than 3 control GCPs in gcp_list.txt; ODM needs at least 3.")
     print("\nRun in the ODM Console:\n")
@@ -83,6 +83,8 @@ def main(argv=None):
     t.add_argument("--odm-cameras", type=Path, metavar="CAMERAS_JSON",
                    help="cameras.json from an earlier ODM run; adds --cameras and "
                         "--use-fixed-camera-params to the printed ODM command")
+    t.add_argument("--odm-threads", type=int, metavar="N",
+                   help="--max-concurrency for ODM (default: logical processors minus 2)")
     t.add_argument("--export-only", action="store_true",
                    help="write the output files from saved tags without opening the window")
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
