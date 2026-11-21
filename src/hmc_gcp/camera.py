@@ -115,5 +115,11 @@ def axes_from_angles(yaw_deg: float, pitch_deg: float) -> np.ndarray:
 
 
 def focal_px(f35: float, width: int, height: int) -> float:
-    """Focal length in pixels from the 35 mm equivalent focal length."""
-    return f35 / 43.2666 * math.hypot(width, height)
+    """Focal length in pixels from the 35 mm equivalent focal length.
+
+    DJI writes the 35 mm equivalent of the full 4:3 sensor, also for 16:9 photos,
+    which are a crop of it with the same width. So the equivalent is referred to a
+    4:3 frame as wide as the photo's long side, not to the photo's own diagonal
+    (that would make 16:9 focal lengths about 9% too short)."""
+    long_side = max(width, height)
+    return f35 / 43.2666 * math.hypot(long_side, 0.75 * long_side)

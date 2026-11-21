@@ -124,7 +124,8 @@ predicted in the same photo.
 
 - **Photos:** JPG with DJI XMP metadata (GPS, `RelativeAltitude`, gimbal yaw/pitch). Other
   drones work if EXIF has GPS; heading then defaults to north-up unless `--plan` is given.
-- **Lens:** a plain pinhole model from the 35 mm focal length. DJI JPGs are distortion-
+- **Lens:** a plain pinhole model from the 35 mm focal length, referred to a 4:3 sensor as
+  wide as the photo, so 16:9 photos (a crop of the same sensor) get the right scale. DJI JPGs are distortion-
   corrected in the camera, so this is fine for prediction. The tagged pixels themselves are
   exact, because they come from the image, not the model.
 - **Gimbal roll** is assumed 0.
