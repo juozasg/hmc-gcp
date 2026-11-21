@@ -18,8 +18,9 @@ HELP = (
     "<b>hmc-gcp tag: keys</b><br><br>"
     "<b>Enter</b> or <b>A</b>: accept point, go to next unreviewed<br>"
     "<b>X</b> or <b>Delete</b>: target not visible, go to next unreviewed<br>"
-    "<b>Left click</b>: place the point by hand<br>"
-    "<b>Shift + click</b>: place by hand and accept<br>"
+    "<b>Right click</b>: place the point by hand<br>"
+    "<b>Shift + right click</b>: place by hand and accept<br>"
+    "<b>Left drag</b>: pan the view<br>"
     "<b>I J K L</b>: nudge point up/left/down/right 1 px (Shift: 5 px)<br>"
     "<b>Right / Left</b>: next / previous pair<br>"
     "<b>N</b>: next unreviewed pair<br>"
@@ -60,6 +61,8 @@ class TagApp:
             self.idx = 0
         self.overview = False
         self.zoom = 1.0
+        self.view_center = None  # set by panning; None = follow the point / prediction
+        self.drag = None
         self.cur = None
         self.edited = False
         self.view = None
@@ -182,6 +185,7 @@ class TagApp:
         else:
             self.cur = list(pred)
         self.edited = it.status == "manual"
+        self.view_center = None
         self.dirty = True
 
     @staticmethod
@@ -237,6 +241,7 @@ class TagApp:
     def toggle_overview(self):
         self.overview = not self.overview
         self.zoom = 1.0
+        self.view_center = None
         self.dirty = True
 
     def zoom_by(self, f):
@@ -277,6 +282,8 @@ class TagApp:
         else:
             hs = max(5 * exp, 40) / self.zoom
             c = self.cur
+        if self.view_center is not None:
+            c = self.view_center
         hs = max(8, int(hs))
         x0, y0 = int(round(c[0])) - hs, int(round(c[1])) - hs
         crop = crop_padded(img, x0, y0, x0 + 2 * hs, y0 + 2 * hs)
@@ -401,12 +408,18 @@ class TagApp:
             fn()
         return True
 
+    def _view_center(self):
+        x0, y0, scale, ox, oy, side = self.view
+        return [x0 + side / 2 / scale, y0 + side / 2 / scale]
+
     def _on_click(self, e):
+        """Right click: place the point by hand (Shift: and accept)."""
         if not self.view or self.help.visible or not self.items:
             return
         x0, y0, scale, ox, oy, side = self.view
         if not pygame.Rect(ox, oy, side, side).collidepoint(e.pos):
             return
+        self.view_center = self._view_center()  # keep the view still
         self.cur = [x0 + (e.pos[0] - ox) / scale, y0 + (e.pos[1] - oy) / scale]
         self.edited = True
         self.dirty = True
@@ -420,8 +433,17 @@ class TagApp:
             return False
         if e.type == pygame.KEYDOWN:
             running = self._on_key(e)
-        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.canvas.collidepoint(e.pos):
+        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 3 and self.canvas.collidepoint(e.pos):
             self._on_click(e)
+        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.canvas.collidepoint(e.pos) \
+                and self.view and not self.help.visible:
+            self.drag = (e.pos, self._view_center(), self.view[2])
+        elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
+            self.drag = None
+        elif e.type == pygame.MOUSEMOTION and self.drag:
+            (sx, sy), c0, scale = self.drag
+            self.view_center = [c0[0] - (e.pos[0] - sx) / scale, c0[1] - (e.pos[1] - sy) / scale]
+            self.dirty = True
         elif e.type == pygame.MOUSEWHEEL and self.canvas.collidepoint(pygame.mouse.get_pos()):
             self.zoom_by(1.25 if e.y > 0 else 0.8)
         elif e.type == pygame_gui.UI_BUTTON_PRESSED and e.ui_element in self.buttons:

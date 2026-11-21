@@ -109,7 +109,7 @@ georeferencing.
    and its take-off height error (tags away from the photo centre show the scale error).
    `--takeoff-alt` is only the starting value. The window shows each flight's learned
    take-off height with its uncertainty; `tag_report.txt` lists them all.
-5. **Review.** You accept, click to correct, or mark "not visible". Everything is saved to
+5. **Review.** You accept, right-click to correct, or mark "not visible". Everything is saved to
    `tags.json` after every action, so you can quit and resume.
 6. **Export.** GCPs tagged in at least `--min-images` photos (default 2) go to
    `gcp_list.txt`. GCPs tagged in fewer photos, or named with `--checkpoint`, go to the
@@ -164,8 +164,9 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | --- | --- |
 | Enter / A | Accept point, go to next unreviewed |
 | X / Delete | Target not visible, go to next unreviewed |
-| Left click | Place the point by hand |
-| Shift + click | Place by hand and accept |
+| Right click | Place the point by hand |
+| Shift + right click | Place by hand and accept |
+| Left drag | Pan the view (resets when you move to another pair or switch detail/overview) |
 | I J K L | Nudge point 1 px (Shift: 5 px) |
 | Right / Left | Next / previous pair |
 | N | Next unreviewed pair |
