@@ -20,8 +20,8 @@ uv run hmc-gcp --help
 ## Quick start
 
 ```
-uv run hmc-gcp tag D:\flights\nida_1120\images D:\survey\gcps.gpkg gcp_points --name-field name --takeoff-alt 2.35 --auto-accept 0.75
-uv run hmc-gcp view D:\flights\nida_1120\images
+uv run hmc-gcp tag "E:\hmc-data\neringa\surveys\2026-11-06-L1-smiltyne\uav\ortho" "E:\hmc-data\neringa\gcp.gpkg" "2026-11-06-L1-smiltyne gcp" --auto-accept 0.75
+uv run hmc-gcp view "E:\hmc-data\neringa\surveys\2026-11-06-L1-smiltyne\uav\ortho"
 ```
 
 Outputs go to a folder next to the images folder (`images_gcp`), or to `-o <folder>`.

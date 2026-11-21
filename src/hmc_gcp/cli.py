@@ -28,7 +28,7 @@ def main(argv=None):
     t.add_argument("layer", help="point layer name in the GeoPackage")
     t.add_argument("-o", "--out", type=Path,
                    help="output folder (default: <images folder>_gcp next to it)")
-    t.add_argument("--name-field", help="attribute with the GCP name (default: feature id)")
+    t.add_argument("--name-field", default="name", help="attribute with the GCP name (default: feature id)")
     t.add_argument("--z-field", help="attribute with the GCP height, if the points are 2D")
     t.add_argument("--takeoff-alt", type=float,
                    help="starting take-off height, in the same height system as the GCPs "
