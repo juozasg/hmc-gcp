@@ -34,10 +34,20 @@ HELP = (
     "<b>S</b>: save and export<br>"
     "<b>H</b> or <b>F1</b>: show / hide this help<br>"
     "<b>Q</b> or <b>Esc</b>: save, export and quit<br><br>"
-    "Yellow ring: search area around the prediction. Green box: detected target.<br>"
-    "Orange box: weak candidate (no centre dot); the point stays on the prediction.<br>"
-    "White cross: point to accept. Green: accepted. Cyan: placed by hand.<br>"
-    "Purple: other GCPs from the GeoPackage, projected into this photo."
+    "<b>Colours</b><br>"
+    "<font color='#FFDC28'><b>Yellow ring + small cross</b></font>: search area and "
+    "predicted position<br>"
+    "<font color='#3CE65A'><b>Green box</b></font>: detected target<br>"
+    "<font color='#FF9628'><b>Orange box</b></font>: weak candidate (no centre dot); "
+    "the point stays on the prediction<br>"
+    "<font color='#F5F5F5'><b>White cross</b></font>: point to accept<br>"
+    "<font color='#3CE65A'><b>Green cross / mark</b></font>: accepted (by you or "
+    "automatically)<br>"
+    "<font color='#3CDCFF'><b>Cyan cross / mark</b></font>: placed or moved by hand<br>"
+    "<font color='#BE5AFF'><b>Purple mark</b></font>: other GCPs from the GeoPackage, "
+    "projected into this photo<br>"
+    "<font color='#FF4646'><b>Red</b></font> (info panel): not visible; "
+    "<font color='#969696'><b>grey</b></font>: parked outside the photo"
 )
 
 
@@ -99,7 +109,7 @@ class TagApp:
             b = UIButton(pygame.Rect(8 + col * (bw + gap), y + row * (bh + gap), bw, bh),
                          text, manager=self.ui, container=self.panel)
             self.buttons[b] = fn
-        self.help = UITextBox(HELP, pygame.Rect(40, 40, 620, 560), manager=self.ui)
+        self.help = UITextBox(HELP, pygame.Rect(40, 20, 680, 810), manager=self.ui)
         self.help.hide()
 
     def flash(self, msg: str):
