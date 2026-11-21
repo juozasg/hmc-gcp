@@ -56,8 +56,16 @@ and prints the command to paste into the ODM Console:
 ```
 <survey>\odm\images\        the photos (hard links: no extra disk space on the same drive)
 <survey>\odm\gcp_list.txt    control GCPs (checkpoints left out)
+<survey>\odm\geo.txt         corrected photo positions and heights
 <survey>\odm\odm_command.txt the ODM command
 ```
+
+`geo.txt` replaces the photos' own GPS for ODM (the photos are not edited). Positions are
+corrected by the GPS offsets learned from the tags; heights are each flight's learned take-off
+height plus the height above take-off, in the GCPs' height system (DJI's own GPS altitude is
+often wrong, e.g. negative). This gives ODM better photo-pair selection and starting
+positions. It does not constrain the result unless `--force-gps` is added; the GCPs set the
+georeferencing. `--no-geo` leaves it out.
 
 Without a survey folder it is `<images folder>_odm` next to the photos; `--odm-dir` sets
 it, `--no-odm` skips it. Re-running updates it: changed photos are replaced, and photos no
@@ -136,6 +144,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | `--no-auto` | Skip automatic acceptance |
 | `--odm-dir` / `--no-odm` | ODM project folder to build on exit / do not build it |
 | `--odm-cameras` | `cameras.json` to reuse in the printed ODM command |
+| `--no-geo` | Do not write `geo.txt` to the ODM folder |
 | `--odm-threads` | ODM `--max-concurrency` (default: logical processors minus 2) |
 | `--export-only` | Write the outputs from saved tags without opening the window |
 | `--window 1500x950` | Window size |

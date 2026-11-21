@@ -112,6 +112,7 @@ class Session:
                                "+ellps=GRS80 +units=m +no_defs")
         wgs_to_local = Transformer.from_crs("EPSG:4326", local, always_xy=True)
         src_to_local = Transformer.from_crs(src_crs, local, always_xy=True)
+        s.local_to_src = Transformer.from_crs(local, src_crs, always_xy=True)
 
         for p in pts:
             E, N = src_to_local.transform(p.x, p.y)
@@ -508,6 +509,22 @@ class Session:
                 "offset_m": None if fl["off"] is None else [round(float(v), 3) for v in fl["off"][:2]],
             })
         return out
+
+    def write_geo(self, path: Path) -> int:
+        """Write an ODM image geolocation file (geo.txt) in the GCP coordinate system:
+        photo positions corrected by the learned GPS offsets, heights = the flight's learned
+        take-off height + height above take-off (same height system as the GCPs)."""
+        lines = [self.crs_header()]
+        for sh in sorted(self.shots.values(), key=lambda s: s.name):
+            fl = self.flights[sh.flight]
+            off = self.offset(sh.name)
+            learned_xy = sh.name in self.img_off or fl["tags"] >= 2
+            x, y = self.local_to_src.transform(sh.E + off[0], sh.N + off[1])
+            h_acc = 1.0 if learned_xy else 3.0
+            v_acc = 1.0 if fl["tags"] >= 2 else 3.0
+            lines.append(f"{sh.name} {x:.3f} {y:.3f} {sh.Z:.3f} 0 0 0 {h_acc:.1f} {v_acc:.1f}")
+        Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return len(lines) - 1
 
     def crs_header(self) -> str:
         if self.srs.is_epsg:
