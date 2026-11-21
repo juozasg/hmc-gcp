@@ -27,6 +27,7 @@ HELP = (
     "<b>U</b>: reset this pair to unreviewed<br>"
     "<b>R</b>: run detection again<br>"
     "<b>O</b> or <b>Tab</b>: switch detail / overview<br>"
+    "<b>V</b>: show / hide rejected (not visible) pairs when stepping<br>"
     "<b>+ / -</b> or mouse wheel: zoom<br>"
     "<b>S</b>: save and export<br>"
     "<b>H</b> or <b>F1</b>: show / hide this help<br>"
@@ -39,10 +40,11 @@ HELP = (
 
 
 class TagApp:
-    def __init__(self, session: Session, size=(1500, 950)):
+    def __init__(self, session: Session, size=(1500, 950), show_rejected: bool = False):
         pygame.display.init()
         pygame.font.init()
         self.s = session
+        self.show_rejected = show_rejected
         self.W, self.H = size
         self.screen = pygame.display.set_mode(size)
         pygame.display.set_caption("hmc-gcp tag")
@@ -81,7 +83,7 @@ class TagApp:
             ("Detect again  [R]", self.redetect), ("Overview  [O]", self.toggle_overview),
             ("Zoom in  [+]", lambda: self.zoom_by(1.25)), ("Zoom out  [-]", lambda: self.zoom_by(0.8)),
             ("Save + export  [S]", self.save_export), ("Help  [H]", self.toggle_help),
-            ("Quit  [Q]", None),
+            ("Rejected  [V]", self.toggle_rejected), ("Quit  [Q]", None),
         ]
         self.buttons = {}
         bw, bh, gap = (PANEL_W - 30) // 2, 34, 6
@@ -117,10 +119,20 @@ class TagApp:
         self.idx = max(0, min(len(self.items) - 1, idx))
         self.show()
 
+    def _hidden(self, it) -> bool:
+        """Pairs skipped when stepping: parked outside the photo, and rejected ones
+        unless shown with V."""
+        return it.status == "outside" or (it.status == "absent" and not self.show_rejected)
+
+    def toggle_rejected(self):
+        self.show_rejected = not self.show_rejected
+        self.flash("Rejected pairs " + ("shown" if self.show_rejected else "hidden")
+                   + " when stepping")
+
     def step(self, d: int):
-        """Move to the next/previous pair, skipping pairs predicted outside the photo."""
+        """Move to the next/previous pair, skipping hidden pairs."""
         k = self.idx + d
-        while 0 <= k < len(self.items) and self.items[k].status == "outside":
+        while 0 <= k < len(self.items) and self._hidden(self.items[k]):
             k += d
         if 0 <= k < len(self.items):
             self.go(k)
@@ -149,7 +161,7 @@ class TagApp:
             return
         g = self.items[k].gcp
         j = k
-        while j < len(self.items) and self.items[j].gcp == g and self.items[j].status == "outside":
+        while j < len(self.items) and self.items[j].gcp == g and self._hidden(self.items[j]):
             j += 1
         if j < len(self.items) and self.items[j].gcp == g:
             k = j
@@ -375,6 +387,7 @@ class TagApp:
             pygame.K_PAGEUP: lambda: self.jump_gcp(-1),
             pygame.K_u: self.reset, pygame.K_r: self.redetect,
             pygame.K_o: self.toggle_overview, pygame.K_TAB: self.toggle_overview,
+            pygame.K_v: self.toggle_rejected,
             pygame.K_PLUS: lambda: self.zoom_by(1.25), pygame.K_EQUALS: lambda: self.zoom_by(1.25),
             pygame.K_KP_PLUS: lambda: self.zoom_by(1.25),
             pygame.K_MINUS: lambda: self.zoom_by(0.8), pygame.K_KP_MINUS: lambda: self.zoom_by(0.8),

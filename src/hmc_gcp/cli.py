@@ -95,6 +95,8 @@ def main(argv=None):
                    help="do not write geo.txt (corrected photo positions) to the ODM folder")
     t.add_argument("--odm-threads", type=int, metavar="N",
                    help="--max-concurrency for ODM (default: logical processors minus 2)")
+    t.add_argument("--show-rejected", action="store_true",
+                   help="also stop at pairs marked not visible when stepping (toggle with V)")
     t.add_argument("--export-only", action="store_true",
                    help="write the output files from saved tags without opening the window")
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
@@ -154,7 +156,7 @@ def main(argv=None):
                   f"{r['untagged']} untagged to {out}")
         else:
             from .tag_ui import TagApp
-            r = TagApp(s, a.window).run()
+            r = TagApp(s, a.window, show_rejected=a.show_rejected).run()
         if not a.no_odm:
             _build_odm(s, a, out, sv, r)
     else:

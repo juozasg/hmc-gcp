@@ -154,6 +154,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | `--odm-cameras` | `cameras.json` to reuse in the printed ODM command |
 | `--no-geo` | Do not write `geo.txt` to the ODM folder |
 | `--odm-threads` | ODM `--max-concurrency` (default: logical processors minus 2) |
+| `--show-rejected` | Start with rejected pairs shown when stepping (V toggles) |
 | `--export-only` | Write the outputs from saved tags without opening the window |
 | `--window 1500x950` | Window size |
 
@@ -172,6 +173,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | U | Reset pair to unreviewed |
 | R | Run detection again |
 | O / Tab | Detail / overview of the search area |
+| V | Show / hide rejected (not visible) pairs when stepping with Right/Left and PgDn/PgUp |
 | + / - / wheel | Zoom |
 | S | Save and export |
 | H / F1 | Help |
