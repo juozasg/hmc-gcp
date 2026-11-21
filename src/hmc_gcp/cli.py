@@ -116,13 +116,8 @@ def _resolve_inputs(p, a, sv):
         p.error(msg)
 
 
-def main(argv=None):
-    p = argparse.ArgumentParser(
-        prog="hmc-gcp",
-        description="Tag ground control points in drone photos for ODM, and review the tags.")
-    sub = p.add_subparsers(dest="cmd", required=True)
-
-    t = sub.add_parser("tag", help="find and confirm GCP targets in the photos")
+def _add_session_args(t):
+    """Arguments shared by tag and pick-checkpoints."""
     t.add_argument("images", type=Path,
                    help="survey folder (finds uav/ortho, uav/mission/waypoints.csv, gcp.gpkg and "
                         "the '<survey> gcp' layer), or a folder with the drone photos (JPG)")
@@ -181,10 +176,19 @@ def main(argv=None):
                    help="write the output files from saved tags without opening the window")
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
 
-    c = sub.add_parser("pick-checkpoints", parents=[t], add_help=False,
-                       conflict_handler="resolve",
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        prog="hmc-gcp",
+        description="Tag ground control points in drone photos for ODM, and review the tags.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    t = sub.add_parser("tag", help="find and confirm GCP targets in the photos")
+    _add_session_args(t)
+
+    c = sub.add_parser("pick-checkpoints",
                        help="suggest GCPs to hold out as checkpoints and ask yes/no for each")
-    c.add_argument("-h", "--help", action="help", help="show this help message and exit")
+    _add_session_args(c)
     c.add_argument("--count", type=int, metavar="N",
                    help="number of checkpoints to suggest (default: about a quarter of the "
                         "control GCPs, at least 2)")
