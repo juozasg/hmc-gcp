@@ -107,6 +107,50 @@ logical processors minus 2 (`--odm-threads` overrides it):
 Photo GPS is not forced (`--force-gps` is left out), so the GCPs alone set the
 georeferencing.
 
+## Nadir mosaic: orthorect and orthogain
+
+`orthorect` rebuilds the orthomosaic from the original photos with no blending. ODM's
+camera poses and calibration (`opensfm/reconstruction.json`) and its DSM
+(`odm_dem/dsm.tif`) are used to project every ground cell into the photos, and each cell
+takes its colour from the photo whose camera is horizontally closest (the most nadir view).
+Pixel values are the camera's own, so the mosaic is suited to radiometric work.
+
+    uv run hmc-gcp orthorect E:/hmc-data/neringa/surveys/2026-11-06-L1-smiltyne
+
+The folder can be a survey folder (uses `<survey>/odm`) or an ODM project folder. Options:
+`-o` output folder (default `<odm>/orthorect`), `--images` photo folder (default
+`<odm>/images`), `--res` cell size in metres (default: the photos' median GSD),
+`--margin` pixels ignored at photo edges (40), `--interp nearest|bilinear` (nearest).
+The DSM must exist, so run ODM with `--dsm`.
+
+Outputs, in the same CRS as the ODM products (UTM 34N):
+
+| File | Contents |
+| --- | --- |
+| `mosaic.tif` | RGBA mosaic, alpha 0 where no photo covers the cell |
+| `source.tif` | Photo index per cell (1-based, 0 = none); load in QGIS to see seamlines |
+| `sources.csv` | Photo index, file name and camera position |
+| `overlaps.csv` | Median brightness log-ratio of each overlapping photo pair, used by orthogain |
+
+`orthogain` fixes per-photo brightness differences (exposure, sun, haze). It solves one
+gain per photo and channel so that overlapping photos agree, with the mean gain fixed at 1,
+and writes `mosaic_gain.tif` and `mosaic_gain_gains.csv`.
+
+    uv run hmc-gcp orthogain E:/hmc-data/neringa/surveys/2026-11-07-L1-smiltyne
+    uv run hmc-gcp orthogain E:/hmc-data/neringa/surveys/2026-11-07-L1-smiltyne --reference E:/hmc-data/neringa/surveys/2026-11-06-L1-smiltyne
+
+With `--reference` (a mosaic .tif, or a survey/ODM/orthorect folder, which uses its
+`mosaic_gain.tif` or else `mosaic.tif`), one extra overall gain per channel is applied so
+that the median of the overlapping area matches the reference. Gain the first day first,
+then use it as the reference for the second day. The reference must be in the same CRS.
+Only a global gain is matched, so real changes between the surveys (new heavy-mineral
+streaks, wet sand) do not leak into the correction, but the two mosaics must be roughly
+co-registered (a 1–2 m shift is fine for a global median).
+
+Tested on synthetic data: targets in the mosaic were within 1 px (≤2 cm) of their true
+positions; random per-photo gains of ±14% dropped to 2–3% after orthogain, and a gained
+mosaic matched its reference to within 0.1%.
+
 ## How it works
 
 1. **Predict.** For every photo, the GPS position, height above take-off and gimbal

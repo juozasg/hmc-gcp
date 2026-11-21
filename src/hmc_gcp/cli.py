@@ -95,6 +95,31 @@ def _pick_checkpoints(s, a, out: Path):
     return r
 
 
+def _odm_folder(p, folder: Path) -> Path:
+    """Survey folder -> <survey>/odm; ODM folder as is."""
+    folder = Path(folder)
+    for cand in (folder / "odm", folder):
+        if (cand / "opensfm").is_dir() or (cand / "odm_dem").is_dir():
+            return cand
+    p.error(f"no ODM project found in {folder}")
+
+
+def _ortho_folder(p, folder: Path) -> Path:
+    folder = Path(folder)
+    for cand in (folder, folder / "orthorect", folder / "odm" / "orthorect"):
+        if (cand / "mosaic.tif").exists() and (cand / "source.tif").exists():
+            return cand
+    p.error(f"no orthorect output (mosaic.tif, source.tif) found in {folder}; run orthorect first")
+
+
+def _mosaic_path(p, ref: Path) -> Path:
+    ref = Path(ref)
+    if ref.is_file():
+        return ref
+    d = _ortho_folder(p, ref)
+    return d / "mosaic_gain.tif" if (d / "mosaic_gain.tif").exists() else d / "mosaic.tif"
+
+
 def _resolve_inputs(p, a, sv):
     """Fill GeoPackage, layer and plan from the survey folder; error if missing."""
     if sv:
@@ -204,7 +229,46 @@ def main(argv=None):
                    help="output folder used by 'tag' (default: <images folder>_gcp)")
     v.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
 
+    o = sub.add_parser("orthorect",
+                       help="mosaic the original photos on ODM's DSM (most-nadir pixel, no blending)")
+    o.add_argument("folder", type=Path, help="survey folder or ODM project folder")
+    o.add_argument("-o", "--out", type=Path, help="output folder (default: <ODM folder>/orthorect)")
+    o.add_argument("--images", type=Path,
+                   help="photos to mosaic (default: <ODM folder>/images). File names must match; "
+                        "e.g. TIFFs developed from RAW with the same names")
+    o.add_argument("--res", type=float, metavar="M",
+                   help="pixel size in metres (default: the photos' ground pixel size, ~0.01)")
+    o.add_argument("--margin", type=int, default=40,
+                   help="photo border in pixels never used (default 40)")
+    o.add_argument("--interp", choices=["nearest", "bilinear"], default="nearest",
+                   help="resampling (default nearest: keeps the original pixel values)")
+
+    g = sub.add_parser("orthogain",
+                       help="balance photo brightness in an orthorect mosaic, optionally to a "
+                            "reference mosaic")
+    g.add_argument("folder", type=Path, help="orthorect output folder, ODM folder or survey folder")
+    g.add_argument("--reference", type=Path,
+                   help="mosaic to match overall brightness to (a .tif, or a survey / ODM / "
+                        "orthorect folder: its mosaic_gain.tif, else mosaic.tif)")
+    g.add_argument("-o", "--out", type=Path, help="output file (default: mosaic_gain.tif)")
+
     a = p.parse_args(argv)
+    if a.cmd == "orthorect":
+        odm = _odm_folder(p, a.folder)
+        from . import orthorect
+        try:
+            orthorect.run(odm, a.out or odm / "orthorect", a.images, a.res, a.margin, a.interp)
+        except (ValueError, FileNotFoundError, RuntimeError) as e:
+            p.error(str(e))
+        return
+    if a.cmd == "orthogain":
+        from . import orthogain
+        ref = _mosaic_path(p, a.reference) if a.reference else None
+        try:
+            orthogain.run(_ortho_folder(p, a.folder), ref, a.out)
+        except (ValueError, FileNotFoundError) as e:
+            p.error(str(e))
+        return
     if not a.images.is_dir():
         p.error(f"folder not found: {a.images}"
                 + ("  (in bash, quote Windows paths or use forward slashes)"
