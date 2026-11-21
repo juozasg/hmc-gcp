@@ -174,6 +174,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | U | Reset pair to unreviewed |
 | R | Run detection again |
 | O / Tab | Detail / overview of the search area |
+| F | Fit the whole photo in the window (F again: back) |
 | V | Show / hide rejected (not visible) pairs when stepping with Right/Left and PgDn/PgUp |
 | + / - / wheel | Zoom |
 | S | Save and export |

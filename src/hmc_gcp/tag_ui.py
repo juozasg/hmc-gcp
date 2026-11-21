@@ -28,6 +28,7 @@ HELP = (
     "<b>U</b>: reset this pair to unreviewed<br>"
     "<b>R</b>: run detection again<br>"
     "<b>O</b> or <b>Tab</b>: switch detail / overview<br>"
+    "<b>F</b>: fit the whole photo in the window (F again: back)<br>"
     "<b>V</b>: show / hide rejected (not visible) pairs when stepping<br>"
     "<b>+ / -</b> or mouse wheel: zoom<br>"
     "<b>S</b>: save and export<br>"
@@ -60,6 +61,7 @@ class TagApp:
         if self.idx is None:
             self.idx = 0
         self.overview = False
+        self.fit = False  # whole photo (F)
         self.zoom = 1.0
         self.view_center = None  # set by panning; None = follow the point / prediction
         self.drag = None
@@ -86,7 +88,8 @@ class TagApp:
             ("Detect again  [R]", self.redetect), ("Overview  [O]", self.toggle_overview),
             ("Zoom in  [+]", lambda: self.zoom_by(1.25)), ("Zoom out  [-]", lambda: self.zoom_by(0.8)),
             ("Save + export  [S]", self.save_export), ("Help  [H]", self.toggle_help),
-            ("Rejected  [V]", self.toggle_rejected), ("Quit  [Q]", None),
+            ("Rejected  [V]", self.toggle_rejected), ("Whole photo  [F]", self.toggle_fit),
+            ("Quit  [Q]", None),
         ]
         self.buttons = {}
         bw, bh, gap = (PANEL_W - 30) // 2, 34, 6
@@ -238,8 +241,15 @@ class TagApp:
         self.edited = True
         self.dirty = True
 
+    def toggle_fit(self):
+        self.fit = not self.fit
+        self.zoom = 1.0
+        self.view_center = None
+        self.dirty = True
+
     def toggle_overview(self):
         self.overview = not self.overview
+        self.fit = False
         self.zoom = 1.0
         self.view_center = None
         self.dirty = True
@@ -282,6 +292,9 @@ class TagApp:
         else:
             hs = max(5 * exp, 40) / self.zoom
             c = self.cur
+        if self.fit:
+            hs = max(sh.width, sh.height) / 2 / self.zoom
+            c = [sh.width / 2, sh.height / 2]
         if self.view_center is not None:
             c = self.view_center
         hs = max(8, int(hs))
@@ -321,7 +334,7 @@ class TagApp:
         R.cross(surf, sc(self.cur), col, 16, 2)
         surf.set_clip(None)
         pygame.draw.rect(surf, R.GREY, clip, 1)
-        mode = "overview" if self.overview else "detail"
+        mode = "whole photo" if self.fit else ("overview" if self.overview else "detail")
         R.label(surf, self.font, f"{it.gcp}  in  {it.image}   ({mode}, zoom {self.zoom:.2f})",
                 (ox + 6, oy + 6))
         if self.msg and time.time() - self.msg_t < 6:
@@ -394,7 +407,7 @@ class TagApp:
             pygame.K_PAGEUP: lambda: self.jump_gcp(-1),
             pygame.K_u: self.reset, pygame.K_r: self.redetect,
             pygame.K_o: self.toggle_overview, pygame.K_TAB: self.toggle_overview,
-            pygame.K_v: self.toggle_rejected,
+            pygame.K_v: self.toggle_rejected, pygame.K_f: self.toggle_fit,
             pygame.K_PLUS: lambda: self.zoom_by(1.25), pygame.K_EQUALS: lambda: self.zoom_by(1.25),
             pygame.K_KP_PLUS: lambda: self.zoom_by(1.25),
             pygame.K_MINUS: lambda: self.zoom_by(0.8), pygame.K_KP_MINUS: lambda: self.zoom_by(0.8),
