@@ -53,10 +53,12 @@ Outputs go to a folder next to the images folder (`images_gcp`), or to `-o <fold
    `gcp_list.txt`. GCPs tagged in fewer photos, or named with `--checkpoint`, go to the
    checkpoint outputs.
 
-`--auto-accept SCORE` runs detection on all pairs first and accepts those scoring at least
-SCORE **and** having a visible centre dot. It repeats while new tags sharpen the
-predictions, and sends auto tags more than 2 m off their flight's fit back for review. 0.75 is a sensible start. Auto-accepted tags
-are marked `auto`; check them in the viewer.
+Before the window opens, the tool runs detection on all unreviewed pairs and accepts those
+scoring at least `--auto-accept` (default 0.75) **and** having a visible centre dot. It
+repeats while new tags sharpen the predictions, and sends auto tags more than 2 m off their
+flight's fit back for review. Auto-accepted tags are marked `auto`; check them in the
+viewer. Pairs you have accepted, rejected or reset by hand are never auto-accepted. Use
+`--no-auto` to review everything by hand.
 
 ## Output files
 
@@ -83,7 +85,8 @@ are marked `auto`; check them in the viewer.
 | `--focal35` | 35 mm equivalent focal length if EXIF lacks it (DJI Mini 3: 24) |
 | `--min-images` | Photos a GCP needs to be used as control (default 2; ODM recommends 3+) |
 | `--checkpoint NAME` | Keep this GCP out of gcp_list.txt and export it as a checkpoint (repeatable) |
-| `--auto-accept SCORE` | Detect everything first and accept confident hits |
+| `--auto-accept SCORE` | Score needed for automatic acceptance (default 0.75) |
+| `--no-auto` | Skip automatic acceptance |
 | `--export-only` | Write the outputs from saved tags without opening the window |
 | `--window 1500x950` | Window size |
 

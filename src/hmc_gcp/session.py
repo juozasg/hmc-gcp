@@ -35,6 +35,7 @@ class Item:
     score: float | None = None
     det: dict | None = None
     pred: list | None = None
+    user: bool = False       # reviewed or reset by hand: never auto-accepted again
 
     @property
     def key(self) -> str:
@@ -42,7 +43,7 @@ class Item:
 
     def to_json(self) -> dict:
         return {"gcp": self.gcp, "image": self.image, "status": self.status, "px": self.px,
-                "score": self.score, "det": self.det, "pred": self.pred}
+                "score": self.score, "det": self.det, "pred": self.pred, "user": self.user}
 
 
 def _log(msg: str):
@@ -394,7 +395,7 @@ class Session:
         with their flight back for review."""
         total = 0
         for rnd in range(1, max_rounds + 1):
-            todo = sorted((it for it in self.items if it.status == "pending"
+            todo = sorted((it for it in self.items if it.status == "pending" and not it.user
                            and self.needs_detect(it)), key=lambda it: it.image)
             if not todo:
                 break
@@ -435,7 +436,7 @@ class Session:
         res = self.tag_residuals()
         n = 0
         for it in self.items:
-            if it.status != "auto" or it.key not in res:
+            if it.status != "auto" or it.user or it.key not in res:
                 continue
             fl = self.flights[self.shots[it.image].flight]
             if fl["tags"] >= 3 and res[it.key] > limit_m:
@@ -459,6 +460,7 @@ class Session:
             d = old.get(it.key)
             if d:
                 it.status, it.px, it.score, it.det = d["status"], d["px"], d.get("score"), d.get("det")
+                it.user = bool(d.get("user", False))
                 n += it.status not in ("pending", "outside")
         _log(f"Resumed {n} reviewed crops from {f}")
 

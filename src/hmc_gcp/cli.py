@@ -51,8 +51,11 @@ def main(argv=None):
     t.add_argument("--checkpoint", action="append", default=[], metavar="NAME",
                    help="keep this GCP out of gcp_list.txt and export it as a checkpoint "
                         "(repeatable)")
-    t.add_argument("--auto-accept", type=float, metavar="SCORE",
-                   help="detect all pairs first and accept those scoring at least SCORE (0-1)")
+    t.add_argument("--auto-accept", type=float, default=0.75, metavar="SCORE",
+                   help="detect all unreviewed pairs first and accept those scoring at least "
+                        "SCORE (0-1) with a visible centre dot (default 0.75)")
+    t.add_argument("--no-auto", action="store_true",
+                   help="do not auto-accept; review every pair by hand")
     t.add_argument("--export-only", action="store_true",
                    help="write the output files from saved tags without opening the window")
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
@@ -73,7 +76,7 @@ def main(argv=None):
             takeoff_alt=a.takeoff_alt, plan=a.plan, target_size=a.target_size,
             search_radius=a.search_radius, refine_radius=a.refine_radius, focal35=a.focal35,
             min_images=a.min_images, checkpoints=a.checkpoint, flight_gap=a.flight_gap)
-        if a.auto_accept is not None:
+        if not a.no_auto:
             s.auto_pass(a.auto_accept)
         if a.export_only:
             s.save()

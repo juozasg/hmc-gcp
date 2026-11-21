@@ -180,20 +180,21 @@ class TagApp:
         it = self.it
         it.px = [float(self.cur[0]), float(self.cur[1])]
         it.status = "manual" if self.edited else "accepted"
+        it.user = True
         self._after_change()
         self.flash(f"{it.gcp} in {it.image}: {it.status}")
         self.next_pending()
 
     def absent(self):
         it = self.it
-        it.status, it.px = "absent", None
+        it.status, it.px, it.user = "absent", None, True
         self._after_change()
         self.flash(f"{it.gcp} in {it.image}: not visible")
         self.next_pending()
 
     def reset(self):
         it = self.it
-        it.status, it.px, it.det = "pending", None, None
+        it.status, it.px, it.det, it.user = "pending", None, None, True
         self._after_change()
         self.show()
 
