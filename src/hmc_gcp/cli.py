@@ -23,9 +23,15 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     t = sub.add_parser("tag", help="find and confirm GCP targets in the photos")
-    t.add_argument("images", type=Path, help="folder with the drone photos (JPG)")
-    t.add_argument("gpkg", type=Path, help="GeoPackage with the surveyed GCP points")
-    t.add_argument("layer", help="point layer name in the GeoPackage")
+    t.add_argument("images", type=Path,
+                   help="survey folder (finds uav/ortho, uav/mission/waypoints.csv, gcp.gpkg and "
+                        "the '<survey> gcp' layer), or a folder with the drone photos (JPG)")
+    t.add_argument("gpkg", type=Path, nargs="?",
+                   help="GeoPackage with the surveyed GCP points (found automatically in "
+                        "survey-folder mode)")
+    t.add_argument("layer", nargs="?",
+                   help="point layer in the GeoPackage (default in survey-folder mode: "
+                        "'<survey> gcp')")
     t.add_argument("-o", "--out", type=Path,
                    help="output folder (default: <images folder>_gcp next to it)")
     t.add_argument("--name-field", default="name", help="attribute with the GCP name (default: feature id)")
@@ -37,7 +43,9 @@ def main(argv=None):
                    help="a pause between photos longer than this starts a new flight with its "
                         "own learned take-off height (default 120)")
     t.add_argument("--plan", type=Path,
-                   help="flight plan CSV (Litchi style); heading and gimbal pitch are taken from it")
+                   help="flight plan CSV (Litchi style); heading and gimbal pitch are taken from it "
+                        "(default in survey-folder mode: uav/mission/waypoints.csv)")
+    t.add_argument("--no-plan", action="store_true", help="do not use a flight plan")
     t.add_argument("--target-size", type=float, default=0.40,
                    help="target side length in metres (default 0.40)")
     t.add_argument("--search-radius", type=float, default=10.0,
@@ -61,21 +69,47 @@ def main(argv=None):
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
 
     v = sub.add_parser("view", help="page through the photos and see the tags")
-    v.add_argument("images", type=Path, help="folder with the drone photos (JPG)")
+    v.add_argument("images", type=Path, help="survey folder, or folder with the drone photos (JPG)")
     v.add_argument("-o", "--out", type=Path,
                    help="output folder used by 'tag' (default: <images folder>_gcp)")
     v.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
 
     a = p.parse_args(argv)
+    from .survey import resolve
+    sv = resolve(a.images)
+    if sv:
+        a.images = sv.images
+        print(f"Survey {sv.name}: photos {sv.images}")
     out = a.out or _default_out(a.images)
 
     if a.cmd == "tag":
+        if sv:
+            a.gpkg = a.gpkg or sv.gpkg
+            a.layer = a.layer or sv.layer
+            if not a.plan and not a.no_plan:
+                a.plan = sv.plan
+            print(f"  GCPs: {a.gpkg} / {a.layer}")
+            print(f"  plan: {a.plan or 'none'}")
+        if a.no_plan:
+            a.plan = None
+        if not a.gpkg or not a.layer:
+            msg = "GeoPackage and layer were not given"
+            if sv:
+                msg += f" and not found for survey {sv.name}"
+            if a.gpkg:
+                from .gpkg import list_layers
+                msg += f". Layers in {a.gpkg}: {', '.join(list_layers(a.gpkg))}"
+            p.error(msg)
         from .session import Session
-        s = Session.create(
-            a.images, a.gpkg, a.layer, out, name_field=a.name_field, z_field=a.z_field,
-            takeoff_alt=a.takeoff_alt, plan=a.plan, target_size=a.target_size,
-            search_radius=a.search_radius, refine_radius=a.refine_radius, focal35=a.focal35,
-            min_images=a.min_images, checkpoints=a.checkpoint, flight_gap=a.flight_gap)
+        try:
+            s = Session.create(
+                a.images, a.gpkg, a.layer, out, name_field=a.name_field, z_field=a.z_field,
+                takeoff_alt=a.takeoff_alt, plan=a.plan, target_size=a.target_size,
+                search_radius=a.search_radius, refine_radius=a.refine_radius,
+                focal35=a.focal35, min_images=a.min_images, checkpoints=a.checkpoint,
+                flight_gap=a.flight_gap)
+        except (ValueError, FileNotFoundError) as e:
+            p.error(str(e))
         if not a.no_auto:
             s.auto_pass(a.auto_accept)
         if a.export_only:

@@ -19,12 +19,34 @@ uv run hmc-gcp --help
 
 ## Quick start
 
+Survey-folder mode (photos, flight plan and GCP layer are found from the folder layout):
+
 ```
-uv run hmc-gcp tag "E:\hmc-data\neringa\surveys\2026-11-06-L1-smiltyne\uav\ortho" "E:\hmc-data\neringa\gcp.gpkg" "2026-11-06-L1-smiltyne gcp" --auto-accept 0.75
-uv run hmc-gcp view "E:\hmc-data\neringa\surveys\2026-11-06-L1-smiltyne\uav\ortho"
+uv run hmc-gcp tag E:\hmc-data\neringa\surveys\2026-11-06-L1-smiltyne
+uv run hmc-gcp view E:\hmc-data\neringa\surveys\2026-11-06-L1-smiltyne
 ```
 
-Outputs go to a folder next to the images folder (`images_gcp`), or to `-o <folder>`.
+The expected layout:
+
+```
+<project>\gcp.gpkg                               layer "<survey> gcp"
+<project>\surveys\<survey>\uav\ortho\            photos
+<project>\surveys\<survey>\uav\mission\waypoints.csv
+```
+
+`gcp.gpkg` is looked for in the folders above the survey (up to 4 levels). The layer is
+`<survey> gcp`, or the only layer starting with the survey name and containing "gcp". The
+survey folder, its `uav` folder or its `uav\ortho` folder can all be given. Anything given
+explicitly (GeoPackage, layer, `--plan`) wins; `--no-plan` skips the plan.
+
+Explicit paths work for any other layout:
+
+```
+uv run hmc-gcp tag D:\flights\nida\images D:\survey\gcps.gpkg gcp_points --takeoff-alt 2.35
+uv run hmc-gcp view D:\flights\nida\images
+```
+
+Outputs go to a folder next to the photos (`ortho_gcp`), or to `-o <folder>`.
 
 ## How it works
 
@@ -74,7 +96,8 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 
 | Option | Meaning |
 | --- | --- |
-| `images gpkg layer` | Photo folder, GeoPackage, point layer name |
+| `images [gpkg layer]` | Survey folder, or photo folder + GeoPackage + point layer name |
+| `--no-plan` | Do not use the flight plan found in survey-folder mode |
 | `--name-field` | Attribute holding the GCP name (default: feature id). Spaces become `_` |
 | `--z-field` | Attribute holding the height, if the points are 2D |
 | `--takeoff-alt` | Starting take-off height **in the same height system as the GCPs**, refined per flight from the tags. Without it, the median GCP height is used |
