@@ -70,7 +70,7 @@ are marked `auto`; check them in the viewer.
 | `--z-field` | Attribute holding the height, if the points are 2D |
 | `--takeoff-alt` | Height of the take-off point **in the same height system as the GCPs**. Without it, the median GCP height is assumed |
 | `--plan` | Flight plan CSV (Litchi style). Heading and gimbal pitch are taken from the nearest waypoint (within 15 m) |
-| `--target-size` | Target side in metres (default 0.30) |
+| `--target-size` | Target side in metres (default 0.40) |
 | `--search-radius` / `--refine-radius` | Search radius before / after 2 tags are confirmed (10 m / 2.5 m) |
 | `--focal35` | 35 mm equivalent focal length if EXIF lacks it (DJI Mini 3: 24) |
 | `--min-images` | Photos a GCP needs to be used as control (default 2; ODM recommends 3+) |

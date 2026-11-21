@@ -35,8 +35,8 @@ def main(argv=None):
                         "(default: median GCP height)")
     t.add_argument("--plan", type=Path,
                    help="flight plan CSV (Litchi style); heading and gimbal pitch are taken from it")
-    t.add_argument("--target-size", type=float, default=0.30,
-                   help="target side length in metres (default 0.30)")
+    t.add_argument("--target-size", type=float, default=0.40,
+                   help="target side length in metres (default 0.40)")
     t.add_argument("--search-radius", type=float, default=10.0,
                    help="search radius in metres before any tag is confirmed (default 10)")
     t.add_argument("--refine-radius", type=float, default=2.5,

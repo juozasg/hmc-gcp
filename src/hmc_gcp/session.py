@@ -64,7 +64,7 @@ class Session:
     @classmethod
     def create(cls, images_dir: Path, gpkg_path: Path, layer: str, out_dir: Path, *,
                name_field=None, z_field=None, takeoff_alt=None, plan=None,
-               target_size=0.30, search_radius=10.0, refine_radius=2.5,
+               target_size=0.40, search_radius=10.0, refine_radius=2.5,
                focal35=None, min_images=2, checkpoints=()) -> "Session":
         settings = dict(target_size=target_size, search_radius=search_radius,
                         refine_radius=refine_radius, min_images=min_images,
