@@ -1,0 +1,145 @@
+# hmc-gcp
+
+Tag ground control points (GCPs) in drone photos for OpenDroneMap, then review the tags.
+
+- `hmc-gcp tag` predicts where each surveyed GCP should appear in each photo, finds the
+  target (a light square with a dark centre dot), and shows you one crop per GCP-photo pair
+  to accept, correct or reject. It writes `gcp_list.txt` for ODM and a GeoPackage/CSV of
+  the GCPs seen in too few photos, for use as checkpoints.
+- `hmc-gcp view` pages through the photos and shows what was tagged in each.
+
+## Install
+
+Needs [uv](https://docs.astral.sh/uv/). In this folder:
+
+```
+uv sync
+uv run hmc-gcp --help
+```
+
+## Quick start
+
+```
+uv run hmc-gcp tag D:\flights\nida_1120\images D:\survey\gcps.gpkg gcp_points --name-field name --takeoff-alt 2.35 --auto-accept 0.75
+uv run hmc-gcp view D:\flights\nida_1120\images
+```
+
+Outputs go to a folder next to the images folder (`images_gcp`), or to `-o <folder>`.
+
+## How it works
+
+1. **Predict.** For every photo, the GPS position, height above take-off and gimbal
+   heading/pitch from the DJI metadata give a camera model. Every GCP is projected into
+   every photo. Pairs whose prediction falls inside the photo (plus a search margin) are
+   queued for review.
+2. **Detect.** In a window around the prediction, the detector removes the local
+   background (wet/dry sand, shading, vegetation), then scores bright, colourless blobs on
+   size (from GSD and `--target-size`), squareness, corners, flatness, contrast and a dark
+   centre dot. The dot centre becomes the GCP pixel (sub-pixel). If no dot is found, the
+   square's centre is used.
+3. **Learn the GPS error.** Each confirmed tag tells how far the photo's GPS position was
+   off. The median error is applied to all photos (and a photo's own error, once it has a
+   tag), so the search window shrinks from `--search-radius` (10 m) to `--refine-radius`
+   (2.5 m). Pairs that then fall outside their photo are parked as `outside`.
+4. **Review.** You accept, click to correct, or mark "not visible". Everything is saved to
+   `tags.json` after every action, so you can quit and resume.
+5. **Export.** GCPs tagged in at least `--min-images` photos (default 2) go to
+   `gcp_list.txt`. GCPs tagged in fewer photos, or named with `--checkpoint`, go to the
+   checkpoint outputs.
+
+`--auto-accept SCORE` runs detection on all pairs first and accepts those scoring at least
+SCORE **and** having a visible centre dot. 0.75 is a sensible start. Auto-accepted tags
+are marked `auto`; check them in the viewer.
+
+## Output files
+
+| File | Contents |
+| --- | --- |
+| `gcp_list.txt` | ODM GCP file. Header is the GeoPackage CRS (e.g. `EPSG:3346`). Copy it to the ODM project folder |
+| `gcp_points.gpkg` | Layers `control` (in gcp_list.txt), `checkpoints`, `untagged`, with photo counts and pixel positions. Opens in QGIS |
+| `checkpoints.csv` | The checkpoint layer as CSV |
+| `tag_report.txt` | Counts per GCP and the estimated GPS offset |
+| `tags.json` | Full review state (used to resume and by the viewer) |
+
+## tag: options
+
+| Option | Meaning |
+| --- | --- |
+| `images gpkg layer` | Photo folder, GeoPackage, point layer name |
+| `--name-field` | Attribute holding the GCP name (default: feature id). Spaces become `_` |
+| `--z-field` | Attribute holding the height, if the points are 2D |
+| `--takeoff-alt` | Height of the take-off point **in the same height system as the GCPs**. Without it, the median GCP height is assumed |
+| `--plan` | Flight plan CSV (Litchi style). Heading and gimbal pitch are taken from the nearest waypoint (within 15 m) |
+| `--target-size` | Target side in metres (default 0.30) |
+| `--search-radius` / `--refine-radius` | Search radius before / after 2 tags are confirmed (10 m / 2.5 m) |
+| `--focal35` | 35 mm equivalent focal length if EXIF lacks it (DJI Mini 3: 24) |
+| `--min-images` | Photos a GCP needs to be used as control (default 2; ODM recommends 3+) |
+| `--checkpoint NAME` | Keep this GCP out of gcp_list.txt and export it as a checkpoint (repeatable) |
+| `--auto-accept SCORE` | Detect everything first and accept confident hits |
+| `--export-only` | Write the outputs from saved tags without opening the window |
+| `--window 1500x950` | Window size |
+
+## tag: keys
+
+| Key | Action |
+| --- | --- |
+| Enter / A | Accept point, go to next unreviewed |
+| X / Delete | Target not visible, go to next unreviewed |
+| Left click | Place the point by hand |
+| Shift + click | Place by hand and accept |
+| I J K L | Nudge point 1 px (Shift: 5 px) |
+| Right / Left | Next / previous pair |
+| N | Next unreviewed pair |
+| PgDn / PgUp | Next / previous GCP |
+| U | Reset pair to unreviewed |
+| R | Run detection again |
+| O / Tab | Detail / overview of the search area |
+| + / - / wheel | Zoom |
+| S | Save and export |
+| H / F1 | Help |
+| Q / Esc | Save, export and quit |
+
+Colours: yellow ring = search area around the prediction, green box = detected target,
+white cross = point to accept, green = accepted, cyan = placed by hand, orange = other GCPs
+predicted in the same photo.
+
+## view: keys
+
+| Key | Action |
+| --- | --- |
+| Right / Left | Next / previous photo |
+| Home / End, PgDn / PgUp | First / last, 10 photos forward / back |
+| + / - / wheel | Zoom (wheel zooms at the cursor) |
+| Drag | Pan |
+| F / 0 | Fit whole photo |
+| Tab | Zoom to the next GCP in the photo |
+| T | Filter: photos with GCPs / with tags / all |
+| 1 / 2 / 3 | Show/hide accepted / unreviewed / not visible |
+| L | Labels on/off |
+| R | Reload tags.json (see changes made in the tag window) |
+| H / F1 | Help |
+| Q / Esc | Quit |
+
+## Assumptions and limits
+
+- **Photos:** JPG with DJI XMP metadata (GPS, `RelativeAltitude`, gimbal yaw/pitch). Other
+  drones work if EXIF has GPS; heading then defaults to north-up unless `--plan` is given.
+- **Lens:** a plain pinhole model from the 35 mm focal length. DJI JPGs are distortion-
+  corrected in the camera, so this is fine for prediction. The tagged pixels themselves are
+  exact, because they come from the image, not the model.
+- **Gimbal roll** is assumed 0.
+- **Heights:** `--takeoff-alt` must be in the GCPs' height system (for example LAS07 if the
+  GCPs are LAS07). A wrong take-off height mainly makes predictions near the photo edges
+  worse; the GPS-error learning absorbs much of it.
+- **Target spacing:** identity comes from the prediction, so targets should be further apart
+  than the GPS error (15 m or more is safe with a Mini 3).
+- **Other target designs:** the detector looks for a light, colourless square with a dark
+  centre dot. A different design needs changes in `detect.py`.
+
+## Tested
+
+- Synthetic flight (40 photos, 8 GCPs, 2.6 m GPS bias): 66 of 67 visible sightings found
+  automatically, no false positives, median error 0.1 px. The one missed target was cut by
+  the photo edge.
+- Three real beach photos (dry sand, wet sand, dune vegetation): the target was found in
+  21 of 21 searches with the prediction up to 400 px off.
