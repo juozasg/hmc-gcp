@@ -16,6 +16,18 @@ def _default_out(images: Path) -> Path:
     return images.parent / f"{images.name}_gcp"
 
 
+def _build_odm(s, a, out: Path, sv, r: dict):
+    from .odm import build_project, default_dir
+    odm_dir = a.odm_dir or default_dir(a.images, sv.folder if sv else None)
+    photos = [Path(sh.path) for sh in s.shots.values()]
+    cmd = build_project(odm_dir, photos, out / "gcp_list.txt", a.odm_cameras)
+    if r.get("control", 0) < 3:
+        print("WARNING: fewer than 3 control GCPs in gcp_list.txt; ODM needs at least 3.")
+    print("\nRun in the ODM Console:\n")
+    print(cmd)
+    print(f"\n(also saved in {Path(odm_dir) / 'odm_command.txt'})")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="hmc-gcp",
@@ -64,6 +76,13 @@ def main(argv=None):
                         "SCORE (0-1) with a visible centre dot (default 0.75)")
     t.add_argument("--no-auto", action="store_true",
                    help="do not auto-accept; review every pair by hand")
+    t.add_argument("--odm-dir", type=Path,
+                   help="ODM project folder to build on exit (default: <survey>/odm, or "
+                        "<images folder>_odm next to it)")
+    t.add_argument("--no-odm", action="store_true", help="do not build the ODM project folder")
+    t.add_argument("--odm-cameras", type=Path, metavar="CAMERAS_JSON",
+                   help="cameras.json from an earlier ODM run; adds --cameras and "
+                        "--use-fixed-camera-params to the printed ODM command")
     t.add_argument("--export-only", action="store_true",
                    help="write the output files from saved tags without opening the window")
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
@@ -121,9 +140,11 @@ def main(argv=None):
             r = s.export()
             print(f"Exported {r['control']} control GCPs, {r['checkpoints']} checkpoints, "
                   f"{r['untagged']} untagged to {out}")
-            return
-        from .tag_ui import TagApp
-        TagApp(s, a.window).run()
+        else:
+            from .tag_ui import TagApp
+            r = TagApp(s, a.window).run()
+        if not a.no_odm:
+            _build_odm(s, a, out, sv, r)
     else:
         from .view_ui import ViewApp
         ViewApp(a.images, out, a.window).run()

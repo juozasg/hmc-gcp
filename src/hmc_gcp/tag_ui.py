@@ -450,3 +450,4 @@ class TagApp:
         print(f"Saved. Exported {r['control']} control GCPs, {r['checkpoints']} checkpoints, "
               f"{r['untagged']} untagged to {self.s.out}")
         pygame.quit()
+        return r

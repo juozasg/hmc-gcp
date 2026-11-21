@@ -48,6 +48,28 @@ uv run hmc-gcp view D:\flights\nida\images
 
 Outputs go to a folder next to the photos (`ortho_gcp`), or to `-o <folder>`.
 
+## ODM project folder
+
+When `tag` finishes (window closed, or `--export-only`), it builds the ODM project folder
+and prints the command to paste into the ODM Console:
+
+```
+<survey>\odm\images\        the photos (hard links: no extra disk space on the same drive)
+<survey>\odm\gcp_list.txt    control GCPs (checkpoints left out)
+<survey>\odm\odm_command.txt the ODM command
+```
+
+Without a survey folder it is `<images folder>_odm` next to the photos; `--odm-dir` sets
+it, `--no-odm` skips it. Re-running updates it: changed photos are replaced, and photos no
+longer in the photo folder (e.g. moved out as unusable) are removed from `odm\images`.
+`--odm-cameras <cameras.json>` adds `--cameras ... --use-fixed-camera-params` to the
+command, to reuse a lens calibration from an earlier run.
+
+The printed options: `--camera-lens brown --feature-quality ultra --min-num-features 20000
+--pc-quality high --dsm --dem-resolution 4 --orthophoto-resolution 1 --skip-3dmodel
+--texturing-skip-global-seam-leveling --build-overviews --cog`. Photo GPS is not forced
+(`--force-gps` is left out), so the GCPs alone set the georeferencing.
+
 ## How it works
 
 1. **Predict.** For every photo, the GPS position, height above take-off and gimbal
@@ -111,6 +133,8 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | `--checkpoint NAME` | Keep this GCP out of gcp_list.txt and export it as a checkpoint (repeatable) |
 | `--auto-accept SCORE` | Score needed for automatic acceptance (default 0.75) |
 | `--no-auto` | Skip automatic acceptance |
+| `--odm-dir` / `--no-odm` | ODM project folder to build on exit / do not build it |
+| `--odm-cameras` | `cameras.json` to reuse in the printed ODM command |
 | `--export-only` | Write the outputs from saved tags without opening the window |
 | `--window 1500x950` | Window size |
 
