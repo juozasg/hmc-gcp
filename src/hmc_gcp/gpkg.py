@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
+import shutil
 import sqlite3
 import struct
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -75,23 +78,37 @@ def _parse_gpkg_geom(blob: bytes):
     return _parse_wkb_point(blob[8 + env_len :])
 
 
+@contextlib.contextmanager
+def _open_copy(path: Path):
+    """Open a temporary copy of a GeoPackage (with its -wal file, if any), so a file that
+    QGIS has open or locked can always be read, and the original is never touched."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    with tempfile.TemporaryDirectory(prefix="hmc_gcp_") as tmp:
+        dst = Path(tmp) / path.name
+        shutil.copy2(path, dst)
+        wal = path.with_name(path.name + "-wal")
+        if wal.exists():
+            shutil.copy2(wal, dst.with_name(dst.name + "-wal"))
+        con = sqlite3.connect(str(dst))
+        try:
+            yield con
+        finally:
+            con.close()
+
+
 def list_layers(path: Path) -> list[str]:
-    con = sqlite3.connect(str(path))
-    try:
+    with _open_copy(path) as con:
         rows = con.execute(
             "SELECT table_name FROM gpkg_contents WHERE data_type='features'"
         ).fetchall()
-    finally:
-        con.close()
     return [r[0] for r in rows]
 
 
 def read_points(path: Path, layer: str, name_field: str | None = None,
                 z_field: str | None = None) -> tuple[list[GCP], SRS]:
-    if not Path(path).exists():
-        raise FileNotFoundError(path)
-    con = sqlite3.connect(str(path))
-    try:
+    with _open_copy(path) as con:
         layers = [r[0] for r in con.execute(
             "SELECT table_name FROM gpkg_contents WHERE data_type='features'")]
         if layer not in layers:
@@ -114,8 +131,6 @@ def read_points(path: Path, layer: str, name_field: str | None = None,
         sel.append(_q(name_field) if name_field else "NULL")
         sel.append(_q(z_field) if z_field else "NULL")
         rows = con.execute(f"SELECT {', '.join(sel)} FROM {_q(layer)}").fetchall()
-    finally:
-        con.close()
 
     gcps: list[GCP] = []
     seen: set[str] = set()

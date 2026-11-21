@@ -145,6 +145,8 @@ predicted in the same photo.
   positions come from the photos. Each flight's height is learned once it has a few tags,
   best when they lie away from the photo centre. Photos without a capture time form one
   group ("flight 0").
+- **GeoPackage:** the GCP layer is read from a temporary copy (with its `-wal` file), so it
+  works while the file is open in QGIS and the original is never modified.
 - **Target spacing:** identity comes from the prediction, so targets should be further apart
   than the GPS error (15 m or more is safe with a Mini 3).
 - **Other target designs:** the detector looks for a light, colourless square with a dark
