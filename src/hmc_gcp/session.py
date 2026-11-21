@@ -322,17 +322,26 @@ class Session:
         self.refresh_outside()
 
     def refresh_outside(self):
-        """Once the position error is known, park pairs predicted outside the photo."""
+        """Once the position error is known, park pairs predicted outside the photo:
+        clearly outside, or just past the edge with no target found inside."""
         if self.n_confirmed < 2:
             return
         for it in self.items:
-            if it.status not in ("pending", "outside"):
+            if it.status not in ("pending", "outside") or it.user:
                 continue
             sh = self.shots[it.image]
             pred, rad, exp = self.predict(it)
             m = 0.5 * rad
-            inside = -m <= pred[0] <= sh.width + m and -m <= pred[1] <= sh.height + m
-            it.status = "pending" if inside else "outside"
+            near = -m <= pred[0] <= sh.width + m and -m <= pred[1] <= sh.height + m
+            # distance of the prediction inside the frame (negative = beyond the edge)
+            d = min(pred[0], sh.width - pred[0], pred[1], sh.height - pred[1])
+            edge = max(0.5 * exp, 0.4 * rad)  # edge zone: target may be cut or just outside
+            searched = bool(it.det) and "pred" in it.det
+            confident = searched and bool(it.det.get("center")) and bool(it.det.get("has_dot"))
+            if not near or (d < edge and searched and not confident):
+                it.status = "outside"
+            else:
+                it.status = "pending"
 
     def offset(self, image: str) -> np.ndarray:
         if image in self.img_off:

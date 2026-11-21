@@ -62,7 +62,8 @@ Outputs go to a folder next to the photos (`ortho_gcp`), or to `-o <folder>`.
 3. **Learn the GPS error.** Each confirmed tag tells how far the photo's GPS position was
    off. The median error is applied to all photos (and a photo's own error, once it has a
    tag), so the search window shrinks from `--search-radius` (10 m) to `--refine-radius`
-   (2.5 m). Pairs that then fall outside their photo are parked as `outside`.
+   (2.5 m). Pairs that then fall outside their photo are parked as `outside`, and so are
+   pairs predicted just past the photo edge where detection found no target.
 4. **Learn each flight's take-off height.** Photos are split into flights wherever the
    capture times have a pause longer than `--flight-gap` (120 s, e.g. a battery swap).
    For each flight, the confirmed tags are fitted for the flight's horizontal GPS offset
