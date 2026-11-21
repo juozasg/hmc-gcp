@@ -176,7 +176,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | O / Tab | Detail / overview of the search area |
 | F | Fit the whole photo in the window (F again: back) |
 | V | Show / hide rejected (not visible) pairs when stepping with Right/Left and PgDn/PgUp |
-| + / - / wheel | Zoom |
+| + / - / wheel | Zoom (the wheel zooms at the mouse position) |
 | S | Save and export |
 | H / F1 | Help |
 | Q / Esc | Save, export and quit |

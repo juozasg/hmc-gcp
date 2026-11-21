@@ -30,7 +30,7 @@ HELP = (
     "<b>O</b> or <b>Tab</b>: switch detail / overview<br>"
     "<b>F</b>: fit the whole photo in the window (F again: back)<br>"
     "<b>V</b>: show / hide rejected (not visible) pairs when stepping<br>"
-    "<b>+ / -</b> or mouse wheel: zoom<br>"
+    "<b>+ / -</b> or mouse wheel: zoom (the wheel zooms at the mouse)<br>"
     "<b>S</b>: save and export<br>"
     "<b>H</b> or <b>F1</b>: show / hide this help<br>"
     "<b>Q</b> or <b>Esc</b>: save, export and quit<br><br>"
@@ -254,8 +254,17 @@ class TagApp:
         self.view_center = None
         self.dirty = True
 
-    def zoom_by(self, f):
+    def zoom_by(self, f, screen_pos=None):
+        """Zoom; with screen_pos, keep the image point under the mouse where it is."""
+        old = self.zoom
         self.zoom = max(0.2, min(20.0, self.zoom * f))
+        if screen_pos is not None and self.view and self.zoom != old:
+            x0, y0, scale, ox, oy, side = self.view
+            px = x0 + (screen_pos[0] - ox) / scale
+            py = y0 + (screen_pos[1] - oy) / scale
+            new_scale = scale * self.zoom / old
+            self.view_center = [px - (screen_pos[0] - ox - side / 2) / new_scale,
+                                py - (screen_pos[1] - oy - side / 2) / new_scale]
         self.dirty = True
 
     def toggle_help(self):
@@ -458,7 +467,7 @@ class TagApp:
             self.view_center = [c0[0] - (e.pos[0] - sx) / scale, c0[1] - (e.pos[1] - sy) / scale]
             self.dirty = True
         elif e.type == pygame.MOUSEWHEEL and self.canvas.collidepoint(pygame.mouse.get_pos()):
-            self.zoom_by(1.25 if e.y > 0 else 0.8)
+            self.zoom_by(1.25 if e.y > 0 else 0.8, pygame.mouse.get_pos())
         elif e.type == pygame_gui.UI_BUTTON_PRESSED and e.ui_element in self.buttons:
             fn = self.buttons[e.ui_element]
             if fn is None:
