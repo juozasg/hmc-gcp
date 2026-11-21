@@ -31,8 +31,11 @@ def main(argv=None):
     t.add_argument("--name-field", help="attribute with the GCP name (default: feature id)")
     t.add_argument("--z-field", help="attribute with the GCP height, if the points are 2D")
     t.add_argument("--takeoff-alt", type=float,
-                   help="height of the take-off point, in the same height system as the GCPs "
-                        "(default: median GCP height)")
+                   help="starting take-off height, in the same height system as the GCPs "
+                        "(default: median GCP height); refined per flight from the tags")
+    t.add_argument("--flight-gap", type=float, default=120.0, metavar="SECONDS",
+                   help="a pause between photos longer than this starts a new flight with its "
+                        "own learned take-off height (default 120)")
     t.add_argument("--plan", type=Path,
                    help="flight plan CSV (Litchi style); heading and gimbal pitch are taken from it")
     t.add_argument("--target-size", type=float, default=0.40,
@@ -69,7 +72,7 @@ def main(argv=None):
             a.images, a.gpkg, a.layer, out, name_field=a.name_field, z_field=a.z_field,
             takeoff_alt=a.takeoff_alt, plan=a.plan, target_size=a.target_size,
             search_radius=a.search_radius, refine_radius=a.refine_radius, focal35=a.focal35,
-            min_images=a.min_images, checkpoints=a.checkpoint)
+            min_images=a.min_images, checkpoints=a.checkpoint, flight_gap=a.flight_gap)
         if a.auto_accept is not None:
             s.auto_pass(a.auto_accept)
         if a.export_only:

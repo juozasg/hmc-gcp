@@ -68,7 +68,7 @@ class TagApp:
     def _build_ui(self):
         x0 = self.W - PANEL_W
         self.panel = UIPanel(pygame.Rect(x0, 0, PANEL_W, self.H), manager=self.ui)
-        self.info = UITextBox("", pygame.Rect(8, 8, PANEL_W - 22, 372),
+        self.info = UITextBox("", pygame.Rect(8, 8, PANEL_W - 22, 430),
                               manager=self.ui, container=self.panel)
         specs = [
             ("Accept  [Enter]", self.accept), ("Not visible  [X]", self.absent),
@@ -84,7 +84,7 @@ class TagApp:
         ]
         self.buttons = {}
         bw, bh, gap = (PANEL_W - 30) // 2, 34, 6
-        y = 390
+        y = 448
         for i, (text, fn) in enumerate(specs):
             col, row = i % 2, i // 2
             b = UIButton(pygame.Rect(8 + col * (bw + gap), y + row * (bh + gap), bw, bh),
@@ -333,9 +333,19 @@ class TagApp:
             f"Search radius {rad * gsd:.1f} m ({rad:.0f} px)<br>"
             f"Position correction E {off[0]:+.2f} m, N {off[1]:+.2f} m<br>"
             f"Heading from {sh.yaw_source} ({sh.yaw:.1f} deg)<br>"
+            f"{self._flight_line(sh.flight)}<br>"
             f"This GCP tagged in {n_g} photos"
         )
         self.info.set_text(html)
+
+    def _flight_line(self, f: int) -> str:
+        fl = self.s.flights[f]
+        name = f"Flight {f}" if f else "No capture time"
+        if fl["tags"]:
+            sig = f" +/- {fl['sigma']:.1f}" if fl["sigma"] is not None else ""
+            return (f"{name}: take-off {self.s.flight_takeoff(f):.2f}{sig} m "
+                    f"({fl['tags']} tags)")
+        return f"{name}: take-off {self.s.flight_takeoff(f):.2f} m (not learned yet)"
 
     # ------------------------------------------------------------ events
     def _on_key(self, e) -> bool:

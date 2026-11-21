@@ -41,9 +41,15 @@ Outputs go to a folder next to the images folder (`images_gcp`), or to `-o <fold
    off. The median error is applied to all photos (and a photo's own error, once it has a
    tag), so the search window shrinks from `--search-radius` (10 m) to `--refine-radius`
    (2.5 m). Pairs that then fall outside their photo are parked as `outside`.
-4. **Review.** You accept, click to correct, or mark "not visible". Everything is saved to
+4. **Learn each flight's take-off height.** Photos are split into flights wherever the
+   capture times have a pause longer than `--flight-gap` (120 s, e.g. a battery swap).
+   For each flight, the confirmed tags are fitted for the flight's horizontal GPS offset
+   and its take-off height error (tags away from the photo centre show the scale error).
+   `--takeoff-alt` is only the starting value. The window shows each flight's learned
+   take-off height with its uncertainty; `tag_report.txt` lists them all.
+5. **Review.** You accept, click to correct, or mark "not visible". Everything is saved to
    `tags.json` after every action, so you can quit and resume.
-5. **Export.** GCPs tagged in at least `--min-images` photos (default 2) go to
+6. **Export.** GCPs tagged in at least `--min-images` photos (default 2) go to
    `gcp_list.txt`. GCPs tagged in fewer photos, or named with `--checkpoint`, go to the
    checkpoint outputs.
 
@@ -68,7 +74,8 @@ are marked `auto`; check them in the viewer.
 | `images gpkg layer` | Photo folder, GeoPackage, point layer name |
 | `--name-field` | Attribute holding the GCP name (default: feature id). Spaces become `_` |
 | `--z-field` | Attribute holding the height, if the points are 2D |
-| `--takeoff-alt` | Height of the take-off point **in the same height system as the GCPs**. Without it, the median GCP height is assumed |
+| `--takeoff-alt` | Starting take-off height **in the same height system as the GCPs**, refined per flight from the tags. Without it, the median GCP height is used |
+| `--flight-gap` | Pause in seconds that starts a new flight (default 120) |
 | `--plan` | Flight plan CSV (Litchi style). Heading and gimbal pitch are taken from the nearest waypoint (within 15 m) |
 | `--target-size` | Target side in metres (default 0.40) |
 | `--search-radius` / `--refine-radius` | Search radius before / after 2 tags are confirmed (10 m / 2.5 m) |
@@ -130,8 +137,10 @@ predicted in the same photo.
   exact, because they come from the image, not the model.
 - **Gimbal roll** is assumed 0.
 - **Heights:** `--takeoff-alt` must be in the GCPs' height system (for example LAS07 if the
-  GCPs are LAS07). A wrong take-off height mainly makes predictions near the photo edges
-  worse; the GPS-error learning absorbs much of it.
+  GCPs are LAS07). Take-off heights only affect where the tool searches; the exported pixel
+  positions come from the photos. Each flight's height is learned once it has a few tags,
+  best when they lie away from the photo centre. Photos without a capture time form one
+  group ("flight 0").
 - **Target spacing:** identity comes from the prediction, so targets should be further apart
   than the GPS error (15 m or more is safe with a Mini 3).
 - **Other target designs:** the detector looks for a light, colourless square with a dark
@@ -142,5 +151,8 @@ predicted in the same photo.
 - Synthetic flight (40 photos, 8 GCPs, 2.6 m GPS bias): 66 of 67 visible sightings found
   automatically, no false positives, median error 0.1 px. The one missed target was cut by
   the photo edge.
+- Synthetic flight split into 3 flights with take-off heights 1.2, 4.5 and 0.5 m (starting
+  value 1.2 m): learned 1.31 +/- 0.19, 4.55 +/- 0.20 and 0.61 +/- 0.49 m; 72 of 72 visible
+  sightings found.
 - Three real beach photos (dry sand, wet sand, dune vegetation): the target was found in
   21 of 21 searches with the prediction up to 400 px off.

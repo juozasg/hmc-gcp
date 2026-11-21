@@ -75,6 +75,7 @@ class ViewApp:
         for it in data["items"]:
             self.by_image.setdefault(it["image"], []).append(it)
         self.offset = data.get("offset_m", [0, 0])
+        self.flights = {fl["id"]: fl for fl in data.get("flights", [])}
         self.apply_filter()
 
     def apply_filter(self, keep_name=None):
@@ -249,7 +250,7 @@ class ViewApp:
             f"Photo {self.idx + 1} of {len(self.visible)} ({FILTERS[self.filter]})<br>",
             f"Size {im['width']} x {im['height']}, heading {im.get('yaw', 0):.1f} deg "
             f"({im.get('yaw_source', 'exif')})<br>",
-            f"Flight position offset E {self.offset[0]:+.2f} m, N {self.offset[1]:+.2f} m<br><br>",
+            f"{self._flight_line(im)}<br><br>",
         ]
         if not tags:
             lines.append("No GCPs predicted in this photo.")
@@ -264,6 +265,17 @@ class ViewApp:
         n_all = sum(1 for ts in self.by_image.values() for t in ts if t["status"] != "outside")
         lines.append(f"<br>All photos: {n_acc} of {n_all} GCP-photo pairs tagged")
         self.info.set_text("".join(lines))
+
+    def _flight_line(self, im: dict) -> str:
+        fl = self.flights.get(im.get("flight"))
+        if not fl:
+            return f"GPS offset E {self.offset[0]:+.2f} m, N {self.offset[1]:+.2f} m"
+        name = f"Flight {fl['id']}" if fl["id"] else "No capture time"
+        if fl["tags"]:
+            sig = f" +/- {fl['takeoff_sigma']:.1f}" if fl["takeoff_sigma"] is not None else ""
+            return (f"{name}: take-off {fl['takeoff']:.2f}{sig} m from {fl['tags']} tags, "
+                    f"GPS offset E {fl['offset_m'][0]:+.2f}, N {fl['offset_m'][1]:+.2f} m")
+        return f"{name}: take-off {fl['takeoff']:.2f} m (not learned)"
 
     # ------------------------------------------------------------ events
     def _on_key(self, e) -> bool:

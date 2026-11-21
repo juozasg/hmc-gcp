@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -42,11 +43,14 @@ class Shot:
     yaw: float | None
     pitch: float | None
     f35: float | None
+    time: float | None = None  # capture time, seconds since epoch (local camera clock)
     yaw_source: str = "exif"
+    flight: int = 1
     # filled in by the session
     E: float = 0.0
     N: float = 0.0
-    Z: float = 0.0
+    Z0: float = 0.0  # camera height from the starting take-off height
+    Z: float = 0.0   # Z0 plus the learned take-off correction of its flight
     fpx: float = 0.0
     axes: np.ndarray | None = field(default=None, repr=False)
 
@@ -94,11 +98,21 @@ def read_shot(path: Path) -> Shot:
     if yaw is None:
         yaw = _num(xmp.get("FlightYawDegree"))
     f35 = sub.get(41989)
+    t = None
+    raw = sub.get(36867) or sub.get(36868) or exif.get(306)
+    if raw:
+        try:
+            t = datetime.strptime(str(raw).strip()[:19], "%Y:%m:%d %H:%M:%S").timestamp()
+            sec = str(sub.get(37521) or "").strip()
+            if sec.isdigit():
+                t += float("0." + sec)
+        except ValueError:
+            t = None
     return Shot(
         name=Path(path).name, path=str(path), width=w, height=h, lat=lat, lon=lon,
         rel_alt=_num(xmp.get("RelativeAltitude")), abs_alt=abs_alt, yaw=yaw,
         pitch=_num(xmp.get("GimbalPitchDegree")),
-        f35=float(f35) if f35 else None,
+        f35=float(f35) if f35 else None, time=t,
     )
 
 

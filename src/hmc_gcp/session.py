@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from .plan import nearest, read_plan
 ACCEPTED = ("accepted", "manual", "auto")
 STATE_FILE = "tags.json"
 MAX_RADIUS_PX = 1500
+SIG_TAG_M = 0.5    # per-photo GPS jitter, metres (weight of each tag in the flight fit)
+SIG_PRIOR_XY = 10.0  # prior spread of a flight's horizontal GPS offset, metres
+SIG_PRIOR_H = 5.0    # prior spread of a flight's take-off height error, metres
 
 
 @dataclass
@@ -59,16 +63,19 @@ class Session:
         self.img_off: dict[str, np.ndarray] = {}
         self.glob_off = np.zeros(3)
         self.n_confirmed = 0
+        self.takeoff_base = 0.0
+        self.flights: dict[int, dict] = {}
 
     # ------------------------------------------------------------ setup
     @classmethod
     def create(cls, images_dir: Path, gpkg_path: Path, layer: str, out_dir: Path, *,
                name_field=None, z_field=None, takeoff_alt=None, plan=None,
                target_size=0.40, search_radius=10.0, refine_radius=2.5,
-               focal35=None, min_images=2, checkpoints=()) -> "Session":
+               focal35=None, min_images=2, checkpoints=(), flight_gap=120.0) -> "Session":
         settings = dict(target_size=target_size, search_radius=search_radius,
                         refine_radius=refine_radius, min_images=min_images,
                         checkpoints=list(checkpoints), takeoff_alt=takeoff_alt,
+                        flight_gap=flight_gap,
                         gpkg=str(gpkg_path), layer=layer)
         s = cls(images_dir, out_dir, settings)
         s.out.mkdir(parents=True, exist_ok=True)
@@ -138,11 +145,12 @@ class Session:
             E, N = wgs_to_local.transform(sh.lon, sh.lat)
             sh.E, sh.N = float(E), float(N)
             if sh.rel_alt is not None:
-                sh.Z = takeoff_alt + sh.rel_alt
+                sh.Z0 = takeoff_alt + sh.rel_alt
             elif sh.abs_alt is not None:
-                sh.Z = sh.abs_alt
+                sh.Z0 = sh.abs_alt
             else:
-                sh.Z = takeoff_alt + 30.0
+                sh.Z0 = takeoff_alt + 30.0
+            sh.Z = sh.Z0
             f35 = focal35 or sh.f35 or 24.0
             sh.fpx = focal_px(f35, sh.width, sh.height)
             sh.axes = axes_from_angles(sh.yaw, sh.pitch)
@@ -153,6 +161,8 @@ class Session:
         if not focal35 and not any(sh.f35 for sh in s.shots.values()):
             _log("WARNING: no 35 mm focal length in EXIF; assuming 24 mm (use --focal35).")
 
+        s.takeoff_base = takeoff_alt
+        s._split_flights(flight_gap)
         s._build_items()
         s._load_state()
         s.update_offsets()
@@ -198,8 +208,101 @@ class Session:
         t = (z - sh.Z) / ray[2]
         return None if t <= 0 else C + t * ray
 
+    def _split_flights(self, gap: float):
+        """Group photos into flights: a pause longer than gap seconds (battery swap)
+        starts a new flight. Photos without a capture time form flight 0."""
+        timed = sorted((sh for sh in self.shots.values() if sh.time is not None),
+                       key=lambda sh: sh.time)
+        f, last = 0, None
+        for sh in timed:
+            if last is None or sh.time - last > gap:
+                f += 1
+            sh.flight = f
+            last = sh.time
+        for sh in self.shots.values():
+            if sh.time is None:
+                sh.flight = 0
+        self.flights = {}
+        for sh in self.shots.values():
+            fl = self.flights.setdefault(sh.flight, {"id": sh.flight, "photos": 0, "start": sh.time,
+                                                     "dh": 0.0, "sigma": None, "off": None,
+                                                     "tags": 0})
+            fl["photos"] += 1
+            if sh.time is not None and (fl["start"] is None or sh.time < fl["start"]):
+                fl["start"] = sh.time
+        desc = ", ".join(f"flight {k}: {v['photos']} photos" for k, v in sorted(self.flights.items()))
+        _log(f"{len(self.flights)} flights ({desc})")
+
+    def _project_from(self, g: dict, sh: Shot, C: np.ndarray):
+        v = np.array([g["E"], g["N"], g["z"]]) - C
+        r, d, f = sh.axes
+        zc = float(v @ f)
+        if zc <= 0.5:
+            return None
+        return sh.cx + sh.fpx * float(v @ r) / zc, sh.cy + sh.fpx * float(v @ d) / zc
+
+    def _fit_flight(self, tags: list[Item]):
+        """Least-squares fit of one flight's horizontal GPS offset and take-off height
+        error from its confirmed tags. Returns (params [dE, dN, dh], sigma of dh)."""
+        def resid(p):
+            out = []
+            for it in tags:
+                g, sh = self.gcp_by[it.gcp], self.shots[it.image]
+                C = np.array([sh.E + p[0], sh.N + p[1], sh.Z0 + p[2]])
+                uv = self._project_from(g, sh, C)
+                sig_px = SIG_TAG_M / self.gsd(g, sh)
+                if uv is None:
+                    out += [10.0, 10.0]
+                else:
+                    out += [(uv[0] - it.px[0]) / sig_px, (uv[1] - it.px[1]) / sig_px]
+            out += [p[0] / SIG_PRIOR_XY, p[1] / SIG_PRIOR_XY, p[2] / SIG_PRIOR_H]
+            return np.array(out)
+
+        p = np.zeros(3)
+        J = None
+        for _ in range(8):
+            r0 = resid(p)
+            J = np.empty((r0.size, 3))
+            for k in range(3):
+                dp = np.zeros(3)
+                dp[k] = 0.01
+                J[:, k] = (resid(p + dp) - r0) / 0.01
+            step, *_ = np.linalg.lstsq(J, -r0, rcond=None)
+            p = p + step
+            p[2] = float(np.clip(p[2], -0.8 * min(self.shots[t.image].Z0 - self.gcp_by[t.gcp]["z"]
+                                                  for t in tags), 50.0))
+            if np.abs(step).max() < 1e-3:
+                break
+        try:
+            cov = np.linalg.inv(J.T @ J)
+            sig = float(np.sqrt(max(cov[2, 2], 0.0)))
+        except np.linalg.LinAlgError:
+            sig = None
+        return p, sig
+
+    def _solve_flights(self):
+        by_f: dict[int, list[Item]] = {}
+        for it in self.items:
+            if it.status in ACCEPTED and it.px:
+                by_f.setdefault(self.shots[it.image].flight, []).append(it)
+        for f, fl in self.flights.items():
+            tags = by_f.get(f, [])
+            fl["tags"] = len(tags)
+            if tags:
+                p, sig = self._fit_flight(tags)
+                fl["dh"], fl["sigma"], fl["off"] = float(p[2]), sig, np.array([p[0], p[1], 0.0])
+            else:
+                fl["dh"], fl["sigma"], fl["off"] = 0.0, None, None
+        for sh in self.shots.values():
+            sh.Z = sh.Z0 + self.flights[sh.flight]["dh"]
+
+    def flight_takeoff(self, f: int) -> float:
+        return self.takeoff_base + self.flights[f]["dh"]
+
     def update_offsets(self):
-        """Estimate the photo position error from confirmed tags."""
+        """Estimate the photo position error from confirmed tags: per flight (horizontal
+        offset and take-off height), then per photo (horizontal)."""
+        self._solve_flights()
         per: dict[str, list] = {}
         allo = []
         for it in self.items:
@@ -231,13 +334,18 @@ class Session:
             it.status = "pending" if inside else "outside"
 
     def offset(self, image: str) -> np.ndarray:
-        return self.img_off.get(image, self.glob_off)
+        if image in self.img_off:
+            return self.img_off[image]
+        off = self.flights[self.shots[image].flight]["off"]
+        return off if off is not None else self.glob_off
 
     def radius_m(self, image: str) -> float:
         if image in self.img_off:
             return 0.6 * self.settings["refine_radius"]
-        if self.n_confirmed >= 2:
+        if self.flights[self.shots[image].flight]["tags"] >= 1:
             return self.settings["refine_radius"]
+        if self.n_confirmed >= 2:  # other flights are tagged; this one's GPS bias may differ
+            return min(2.0 * self.settings["refine_radius"], self.settings["search_radius"])
         return self.settings["search_radius"]
 
     def predict(self, it: Item):
@@ -326,14 +434,31 @@ class Session:
             "crs": {"header": self.crs_header(), "srs_id": self.srs.srs_id},
             "offset_m": [round(float(v), 3) for v in self.glob_off[:2]],
             "gcps": [{k: g[k] for k in ("name", "x", "y", "z")} for g in self.gcps],
+            "flights": self.flights_json(),
             "images": [{"name": sh.name, "width": sh.width, "height": sh.height,
                         "lat": sh.lat, "lon": sh.lon, "yaw": sh.yaw,
-                        "yaw_source": sh.yaw_source} for sh in self.shots.values()],
+                        "yaw_source": sh.yaw_source, "flight": sh.flight,
+                        "height_above_takeoff": sh.rel_alt}
+                       for sh in self.shots.values()],
             "items": [it.to_json() for it in self.items],
         }
         tmp = self.out / (STATE_FILE + ".tmp")
         tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
         tmp.replace(self.out / STATE_FILE)
+
+    def flights_json(self) -> list[dict]:
+        out = []
+        for f, fl in sorted(self.flights.items()):
+            out.append({
+                "id": f, "photos": fl["photos"], "tags": fl["tags"],
+                "start": (datetime.fromtimestamp(fl["start"]).isoformat(sep=" ")
+                          if fl["start"] is not None else None),
+                "takeoff": round(self.flight_takeoff(f), 3),
+                "takeoff_change": round(fl["dh"], 3),
+                "takeoff_sigma": None if fl["sigma"] is None else round(fl["sigma"], 3),
+                "offset_m": None if fl["off"] is None else [round(float(v), 3) for v in fl["off"][:2]],
+            })
+        return out
 
     def crs_header(self) -> str:
         if self.srs.is_epsg:
@@ -407,7 +532,18 @@ class Session:
             *[f"  {g['name']}: {len(t)} photos" for g, t in checks],
             f"untagged: {len(untagged)}",
             *[f"  {g['name']}" for g in untagged],
+            "",
+            f"flights (split at pauses > {self.settings['flight_gap']:.0f} s; "
+            f"starting take-off height {self.takeoff_base:.2f}):",
         ]
+        for fl in self.flights_json():
+            if fl["tags"]:
+                sig = f" +/- {fl['takeoff_sigma']:.2f}" if fl["takeoff_sigma"] is not None else ""
+                est = (f"take-off {fl['takeoff']:.2f}{sig} m from {fl['tags']} tags, "
+                       f"GPS offset E {fl['offset_m'][0]:+.2f}, N {fl['offset_m'][1]:+.2f} m")
+            else:
+                est = "no tags, starting take-off height used"
+            rep.append(f"  flight {fl['id']} ({fl['photos']} photos, start {fl['start']}): {est}")
         if len(control) < 3:
             rep.append("\nWARNING: ODM needs at least 3 control GCPs; 5 or more is recommended.")
         (self.out / "tag_report.txt").write_text("\n".join(rep) + "\n", encoding="utf-8")
