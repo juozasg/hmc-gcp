@@ -48,6 +48,26 @@ uv run hmc-gcp view D:\flights\nida\images
 
 Outputs go to a folder next to the photos (`ortho_gcp`), or to `-o <folder>`.
 
+## Checkpoints
+
+Checkpoints are GCPs left out of `gcp_list.txt`, so ODM does not use them; their error in the
+finished orthophoto and DSM is an independent accuracy measure. Pick them interactively:
+
+```
+uv run hmc-gcp pick-checkpoints "E:/hmc-data/neringa/surveys/2026-11-06-L1-smiltyne"
+```
+
+It suggests about a quarter of the control GCPs (at least 2, `--count N` to change), never
+the GCPs at both ends of the survey and never leaving fewer than 5 control GCPs
+(`--min-control`). The most redundant GCPs (closest to another control GCP) are suggested
+first, spread over the survey. Answer y/n for each (q stops). The choice is saved in
+`checkpoints.txt` in the output folder and used by every later `tag` run; delete a line to
+use that GCP as control again, or run with `--reset` to start over. The command then
+re-exports and rebuilds the ODM folder (`--no-odm` skips that); rerun ODM with
+`--rerun-from opensfm` for the new GCP list to take effect.
+
+`--checkpoint NAME` on `tag` still adds a checkpoint for that run only.
+
 ## ODM project folder
 
 When `tag` finishes (window closed, or `--export-only`), it builds the ODM project folder

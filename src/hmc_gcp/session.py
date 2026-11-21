@@ -17,6 +17,7 @@ from .camera import Shot, axes_from_angles, focal_px, read_shot
 from .detect import detect_target
 from .imgio import ImageCache, crop_padded
 from .plan import nearest, read_plan
+from .checkpoints import load as load_checkpoints
 
 ACCEPTED = ("accepted", "manual", "auto")
 STATE_FILE = "tags.json"
@@ -75,7 +76,8 @@ class Session:
                focal35=None, min_images=2, checkpoints=(), flight_gap=120.0) -> "Session":
         settings = dict(target_size=target_size, search_radius=search_radius,
                         refine_radius=refine_radius, min_images=min_images,
-                        checkpoints=list(checkpoints), takeoff_alt=takeoff_alt,
+                        checkpoints=sorted(set(checkpoints) | set(load_checkpoints(out_dir))),
+                        takeoff_alt=takeoff_alt,
                         flight_gap=flight_gap,
                         gpkg=str(gpkg_path), layer=layer)
         s = cls(images_dir, out_dir, settings)

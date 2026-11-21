@@ -36,6 +36,86 @@ def _build_odm(s, a, out: Path, sv, r: dict):
     print(f"\n(also saved in {Path(odm_dir) / 'odm_command.txt'})")
 
 
+def _ask(prompt: str) -> str:
+    while True:
+        ans = input(prompt).strip().lower()
+        if ans in ("y", "yes", "n", "no", "q", "quit"):
+            return ans[0]
+        print("  please answer y (yes), n (no) or q (stop asking)")
+
+
+def _pick_checkpoints(s, a, out: Path):
+    """Suggest checkpoints among the control GCPs, ask, save and re-export."""
+    from .checkpoints import save, suggest
+    from .session import ACCEPTED
+    if a.reset:
+        s.settings["checkpoints"] = list(a.checkpoint)
+    current = list(s.settings["checkpoints"])
+    n_photos = {g["name"]: 0 for g in s.gcps}
+    for it in s.items:
+        if it.status in ACCEPTED and it.px:
+            n_photos[it.gcp] += 1
+    control = [dict(g, n_photos=n_photos[g["name"]]) for g in s.gcps
+               if n_photos[g["name"]] >= s.settings["min_images"] and g["name"] not in current]
+    print(f"\nControl GCPs: {len(control)}. Checkpoints already chosen: "
+          f"{', '.join(current) if current else 'none'}")
+    count = a.count if a.count is not None else max(2, round(len(control) / 4))
+    picks = suggest(control, count, a.min_control)
+    if not picks:
+        print(f"No suggestions: keeping at least {a.min_control} control GCPs "
+              "(change with --min-control).")
+        return None
+    print("Suggested checkpoints (most redundant control GCPs first; the GCPs at both ends of "
+          "the survey are never suggested):\n")
+    chosen = []
+    for g in picks:
+        line = (f"  {g['name']}: {g['n_photos']} photos, {g['along_m']:.0f} m along the survey, "
+                f"nearest control GCP {g['nearest_control_m']:.0f} m away")
+        if a.yes:
+            print(line + "  -> checkpoint")
+            chosen.append(g["name"])
+            continue
+        print(line)
+        ans = _ask("  Use as checkpoint? [y/n/q] ")
+        if ans == "q":
+            break
+        if ans == "y":
+            chosen.append(g["name"])
+    if not chosen:
+        print("Nothing changed.")
+        return None
+    s.settings["checkpoints"] = sorted(set(current) | set(chosen))
+    save(out, s.settings["checkpoints"])
+    s.save()
+    r = s.export()
+    print(f"\nCheckpoints now: {', '.join(s.settings['checkpoints'])} "
+          f"(saved in {out / 'checkpoints.txt'})")
+    print(f"Exported {r['control']} control GCPs, {r['checkpoints']} checkpoints, "
+          f"{r['untagged']} untagged to {out}")
+    return r
+
+
+def _resolve_inputs(p, a, sv):
+    """Fill GeoPackage, layer and plan from the survey folder; error if missing."""
+    if sv:
+        a.gpkg = a.gpkg or sv.gpkg
+        a.layer = a.layer or sv.layer
+        if not a.plan and not a.no_plan:
+            a.plan = sv.plan
+        print(f"  GCPs: {a.gpkg} / {a.layer}")
+        print(f"  plan: {a.plan or 'none'}")
+    if a.no_plan:
+        a.plan = None
+    if not a.gpkg or not a.layer:
+        msg = "GeoPackage and layer were not given"
+        if sv:
+            msg += f" and not found for survey {sv.name}"
+        if a.gpkg:
+            from .gpkg import list_layers
+            msg += f". Layers in {a.gpkg}: {', '.join(list_layers(a.gpkg))}"
+        p.error(msg)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="hmc-gcp",
@@ -101,6 +181,19 @@ def main(argv=None):
                    help="write the output files from saved tags without opening the window")
     t.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
 
+    c = sub.add_parser("pick-checkpoints", parents=[t], add_help=False,
+                       conflict_handler="resolve",
+                       help="suggest GCPs to hold out as checkpoints and ask yes/no for each")
+    c.add_argument("-h", "--help", action="help", help="show this help message and exit")
+    c.add_argument("--count", type=int, metavar="N",
+                   help="number of checkpoints to suggest (default: about a quarter of the "
+                        "control GCPs, at least 2)")
+    c.add_argument("--min-control", type=int, default=5,
+                   help="never leave fewer control GCPs than this (default 5)")
+    c.add_argument("--reset", action="store_true",
+                   help="forget the earlier checkpoint choice and start over")
+    c.add_argument("--yes", action="store_true", help="accept all suggestions without asking")
+
     v = sub.add_parser("view", help="page through the photos and see the tags")
     v.add_argument("images", type=Path, help="survey folder, or folder with the drone photos (JPG)")
     v.add_argument("-o", "--out", type=Path,
@@ -119,24 +212,8 @@ def main(argv=None):
         print(f"Survey {sv.name}: photos {sv.images}")
     out = a.out or _default_out(a.images)
 
-    if a.cmd == "tag":
-        if sv:
-            a.gpkg = a.gpkg or sv.gpkg
-            a.layer = a.layer or sv.layer
-            if not a.plan and not a.no_plan:
-                a.plan = sv.plan
-            print(f"  GCPs: {a.gpkg} / {a.layer}")
-            print(f"  plan: {a.plan or 'none'}")
-        if a.no_plan:
-            a.plan = None
-        if not a.gpkg or not a.layer:
-            msg = "GeoPackage and layer were not given"
-            if sv:
-                msg += f" and not found for survey {sv.name}"
-            if a.gpkg:
-                from .gpkg import list_layers
-                msg += f". Layers in {a.gpkg}: {', '.join(list_layers(a.gpkg))}"
-            p.error(msg)
+    if a.cmd in ("tag", "pick-checkpoints"):
+        _resolve_inputs(p, a, sv)
         from .session import Session
         try:
             s = Session.create(
@@ -147,6 +224,11 @@ def main(argv=None):
                 flight_gap=a.flight_gap)
         except (ValueError, FileNotFoundError) as e:
             p.error(str(e))
+        if a.cmd == "pick-checkpoints":
+            r = _pick_checkpoints(s, a, out)
+            if r is not None and not a.no_odm:
+                _build_odm(s, a, out, sv, r)
+            return
         if not a.no_auto:
             s.auto_pass(a.auto_accept)
         if a.export_only:
