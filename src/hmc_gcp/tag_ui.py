@@ -32,6 +32,7 @@ HELP = (
     "<b>H</b> or <b>F1</b>: show / hide this help<br>"
     "<b>Q</b> or <b>Esc</b>: save, export and quit<br><br>"
     "Yellow ring: search area around the prediction. Green box: detected target.<br>"
+    "Orange box: weak candidate (no centre dot); the point stays on the prediction.<br>"
     "White cross: point to accept. Green: accepted. Cyan: placed by hand.<br>"
     "Orange: other GCPs predicted in this photo."
 )
@@ -164,12 +165,18 @@ class TagApp:
         pred, _, _ = self.s.predict(it)
         if it.px:
             self.cur = list(it.px)
-        elif it.det and it.det.get("center"):
+        elif self._strong(it.det):
             self.cur = list(it.det["center"])
         else:
             self.cur = list(pred)
         self.edited = it.status == "manual"
         self.dirty = True
+
+    @staticmethod
+    def _strong(det) -> bool:
+        """A detection good enough to put the point on: centre dot found, or high score."""
+        return bool(det and det.get("center")
+                    and (det.get("has_dot") or (det.get("score") or 0) >= 0.6))
 
     # ------------------------------------------------------------ actions
     def _after_change(self):
@@ -282,9 +289,10 @@ class TagApp:
                 R.ring(surf, sc(p), col, 8, 2)
                 R.label(surf, self.font, other.gcp, (sc(p)[0] + 10, sc(p)[1] - 8), col)
         if it.det and it.det.get("box"):
+            # green: likely target; orange: weak candidate (no centre dot, low score)
             pts = [sc(p) for p in it.det["box"]]
             pygame.draw.polygon(surf, R.BLACK, pts, 4)
-            pygame.draw.polygon(surf, R.GREEN, pts, 2)
+            pygame.draw.polygon(surf, R.GREEN if self._strong(it.det) else R.ORANGE, pts, 2)
         col = R.WHITE
         if it.status in ACCEPTED and not self.edited and it.px and \
                 abs(it.px[0] - self.cur[0]) < 1e-6 and abs(it.px[1] - self.cur[1]) < 1e-6:
