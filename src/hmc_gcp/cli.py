@@ -75,6 +75,10 @@ def main(argv=None):
     v.add_argument("--window", type=_size, default=(1500, 950), help="window size, e.g. 1500x950")
 
     a = p.parse_args(argv)
+    if not a.images.is_dir():
+        p.error(f"folder not found: {a.images}"
+                + ("  (in bash, quote Windows paths or use forward slashes)"
+                   if "\\" not in str(a.images) and ":" in str(a.images) else ""))
     from .survey import resolve
     sv = resolve(a.images)
     if sv:
