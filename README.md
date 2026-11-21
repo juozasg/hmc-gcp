@@ -183,8 +183,10 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 
 Colours: yellow ring = search area around the prediction, green box = detected target,
 orange box = weak candidate without a centre dot (the point then starts at the prediction),
-white cross = point to accept, green = accepted, cyan = placed by hand, orange = other GCPs
-predicted in the same photo.
+white cross = point to accept, green = accepted, cyan = placed by hand, purple = the other
+GCPs from the GeoPackage projected into this photo (tagged ones in their status colour). The
+purple marks show every GCP, also those with no pair in the queue, which helps find untagged
+GCPs.
 
 ## view: keys
 

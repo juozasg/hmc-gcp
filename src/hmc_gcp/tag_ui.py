@@ -37,7 +37,7 @@ HELP = (
     "Yellow ring: search area around the prediction. Green box: detected target.<br>"
     "Orange box: weak candidate (no centre dot); the point stays on the prediction.<br>"
     "White cross: point to accept. Green: accepted. Cyan: placed by hand.<br>"
-    "Orange: other GCPs predicted in this photo."
+    "Purple: other GCPs from the GeoPackage, projected into this photo."
 )
 
 
@@ -323,12 +323,23 @@ class TagApp:
         surf.set_clip(clip)
         R.ring(surf, sc(pred), R.YELLOW, rad * scale, 2)
         R.cross(surf, sc(pred), R.YELLOW, 6, 1)
-        for other in self.items:
-            if other.image == it.image and other.gcp != it.gcp and other.pred:
-                p = other.px or other.pred
-                col = R.STATUS_COLOR.get(other.status, R.ORANGE) if other.px else R.ORANGE
-                R.ring(surf, sc(p), col, 8, 2)
-                R.label(surf, self.font, other.gcp, (sc(p)[0] + 10, sc(p)[1] - 8), col)
+        # every other GCP from the GeoPackage, projected into this photo (purple);
+        # GCPs already tagged in this photo are drawn at their tag in their status colour
+        tagged = {o.gcp: o for o in self.items
+                  if o.image == it.image and o.px and o.status in ACCEPTED}
+        off = self.s.offset(it.image)
+        for g in self.s.gcps:
+            if g["name"] == it.gcp:
+                continue
+            if g["name"] in tagged:
+                p, col = tagged[g["name"]].px, R.STATUS_COLOR[tagged[g["name"]].status]
+            else:
+                p = self.s.project(g, sh, off)
+                if p is None:
+                    continue
+                col = R.PURPLE
+            R.ring(surf, sc(p), col, 8, 2)
+            R.label(surf, self.font, g["name"], (sc(p)[0] + 10, sc(p)[1] - 8), col)
         if it.det and it.det.get("box"):
             # green: likely target; orange: weak candidate (no centre dot, low score)
             pts = [sc(p) for p in it.det["box"]]
