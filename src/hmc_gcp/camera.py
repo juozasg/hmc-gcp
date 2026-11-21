@@ -95,8 +95,17 @@ def read_shot(path: Path) -> Shot:
         except (TypeError, ValueError, ZeroDivisionError):
             pass
     yaw = _num(xmp.get("GimbalYawDegree"))
+    pitch = _num(xmp.get("GimbalPitchDegree"))
+    roll = _num(xmp.get("GimbalRollDegree"))
+    yaw_source = "exif"
+    if yaw == 0 and pitch == 0 and (roll or 0) == 0:
+        # Some DJI drones (Mini 3 flown with Litchi/SDK apps) write all-zero gimbal
+        # angles. Treat them as missing: heading from the aircraft, camera straight down.
+        yaw, pitch, yaw_source = None, None, "flight yaw"
     if yaw is None:
         yaw = _num(xmp.get("FlightYawDegree"))
+        if yaw is not None:
+            yaw_source = "flight yaw"
     f35 = sub.get(41989)
     t = None
     raw = sub.get(36867) or sub.get(36868) or exif.get(306)
@@ -111,7 +120,7 @@ def read_shot(path: Path) -> Shot:
     return Shot(
         name=Path(path).name, path=str(path), width=w, height=h, lat=lat, lon=lon,
         rel_alt=_num(xmp.get("RelativeAltitude")), abs_alt=abs_alt, yaw=yaw,
-        pitch=_num(xmp.get("GimbalPitchDegree")),
+        pitch=pitch, yaw_source=yaw_source,
         f35=float(f35) if f35 else None, time=t,
     )
 

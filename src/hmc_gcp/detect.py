@@ -87,6 +87,9 @@ def detect_target(crop: np.ndarray, pred_xy, expected_px: float, search_r_px: fl
 
         Vb = V[y : y + bh, x : x + bw]
         tv = float(np.median(Vb[comp > 0]))
+        # sun glint on water is clipped white; a matte target in normal exposure is not
+        if float(np.mean(Vb[comp > 0] >= 252)) > 0.4:
+            continue
         e = max(1, int(0.12 * side))
         inner = cv2.erode(hull_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (2 * e + 1, 2 * e + 1)))
         vals = Vb[(comp > 0) & (inner > 0)]

@@ -336,16 +336,15 @@ class Session:
     def offset(self, image: str) -> np.ndarray:
         if image in self.img_off:
             return self.img_off[image]
-        off = self.flights[self.shots[image].flight]["off"]
-        return off if off is not None else self.glob_off
+        fl = self.flights[self.shots[image].flight]
+        return fl["off"] if fl["off"] is not None and fl["tags"] >= 2 else self.glob_off
 
     def radius_m(self, image: str) -> float:
         if image in self.img_off:
             return 0.6 * self.settings["refine_radius"]
-        if self.flights[self.shots[image].flight]["tags"] >= 1:
+        if self.flights[self.shots[image].flight]["tags"] >= 2:
             return self.settings["refine_radius"]
-        if self.n_confirmed >= 2:  # other flights are tagged; this one's GPS bias may differ
-            return min(2.0 * self.settings["refine_radius"], self.settings["search_radius"])
+        # untagged flight: its GPS bias can differ from the other flights by metres
         return self.settings["search_radius"]
 
     def predict(self, it: Item):
@@ -389,25 +388,64 @@ class Session:
         old = it.det["pred"]
         return math.hypot(pred[0] - old[0], pred[1] - old[1]) > 0.3 * rad
 
-    def auto_pass(self, threshold: float):
-        """Detect targets in all unreviewed pairs; accept confident ones with a centre dot."""
-        todo = sorted((it for it in self.items if it.status == "pending"),
-                      key=lambda it: it.image)
-        _log(f"Detecting targets in {len(todo)} crops...")
-        n = 0
-        for k, it in enumerate(todo, 1):
-            if it.status == "pending":
-                self.detect(it)
-                if it.det.get("center") and it.det.get("has_dot") and (it.score or 0) >= threshold:
-                    it.status, it.px = "auto", list(it.det["center"])
-                    n += 1
-            if k % 10 == 0:
-                self.update_offsets()  # sharpen predictions as tags come in
-            if k % 20 == 0:
-                _log(f"  {k}/{len(todo)}")
-        self.update_offsets()
-        _log(f"Auto-accepted {n} crops with score >= {threshold} and a centre dot")
+    def auto_pass(self, threshold: float, max_rounds: int = 4):
+        """Detect targets in all unreviewed pairs; accept confident ones with a centre dot.
+        Repeats while new tags sharpen the predictions, then sends auto tags that disagree
+        with their flight back for review."""
+        total = 0
+        for rnd in range(1, max_rounds + 1):
+            todo = sorted((it for it in self.items if it.status == "pending"
+                           and self.needs_detect(it)), key=lambda it: it.image)
+            if not todo:
+                break
+            _log(f"Round {rnd}: detecting targets in {len(todo)} crops...")
+            n = 0
+            for k, it in enumerate(todo, 1):
+                if it.status == "pending":
+                    self.detect(it)
+                    if it.det.get("center") and it.det.get("has_dot") \
+                            and (it.score or 0) >= threshold:
+                        it.status, it.px = "auto", list(it.det["center"])
+                        n += 1
+                if k % 10 == 0:
+                    self.update_offsets()  # sharpen predictions as tags come in
+            self.update_offsets()
+            n -= self.reject_outliers()
+            total += n
+            if n <= 0:
+                break
+        _log(f"Auto-accepted {total} crops with score >= {threshold} and a centre dot")
         self.save()
+
+    def tag_residuals(self) -> dict[str, float]:
+        """Ground distance (m) between each tag and its flight's fitted prediction."""
+        out = {}
+        for it in self.items:
+            if it.status in ACCEPTED and it.px:
+                g, sh = self.gcp_by[it.gcp], self.shots[it.image]
+                fl = self.flights[sh.flight]
+                off = fl["off"] if fl["off"] is not None else np.zeros(3)
+                p = self.project(g, sh, off)
+                if p is not None:
+                    out[it.key] = math.hypot(p[0] - it.px[0], p[1] - it.px[1]) * self.gsd(g, sh)
+        return out
+
+    def reject_outliers(self, limit_m: float = 2.0) -> int:
+        """Send auto tags that sit far from their flight's fit back to review."""
+        res = self.tag_residuals()
+        n = 0
+        for it in self.items:
+            if it.status != "auto" or it.key not in res:
+                continue
+            fl = self.flights[self.shots[it.image].flight]
+            if fl["tags"] >= 3 and res[it.key] > limit_m:
+                it.status, it.px = "pending", None
+                it.det = dict(it.det or {}, suspect=True)
+                n += 1
+        if n:
+            _log(f"  {n} auto tags disagree with their flight by > {limit_m} m: back to review")
+            self.update_offsets()
+        return n
 
     # ------------------------------------------------------------ state
     def _load_state(self):

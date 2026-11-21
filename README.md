@@ -54,7 +54,8 @@ Outputs go to a folder next to the images folder (`images_gcp`), or to `-o <fold
    checkpoint outputs.
 
 `--auto-accept SCORE` runs detection on all pairs first and accepts those scoring at least
-SCORE **and** having a visible centre dot. 0.75 is a sensible start. Auto-accepted tags
+SCORE **and** having a visible centre dot. It repeats while new tags sharpen the
+predictions, and sends auto tags more than 2 m off their flight's fit back for review. 0.75 is a sensible start. Auto-accepted tags
 are marked `auto`; check them in the viewer.
 
 ## Output files
@@ -129,6 +130,9 @@ predicted in the same photo.
 
 ## Assumptions and limits
 
+- **Gimbal angles:** some DJI drones (the Mini 3 flown with Litchi) write all-zero gimbal
+  angles. These are treated as missing: heading comes from the aircraft yaw, and the camera
+  is assumed to point straight down.
 - **Photos:** JPG with DJI XMP metadata (GPS, `RelativeAltitude`, gimbal yaw/pitch). Other
   drones work if EXIF has GPS; heading then defaults to north-up unless `--plan` is given.
 - **Lens:** a plain pinhole model from the 35 mm focal length, referred to a 4:3 sensor as
