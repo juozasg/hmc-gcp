@@ -73,11 +73,19 @@ longer in the photo folder (e.g. moved out as unusable) are removed from `odm\im
 `--odm-cameras <cameras.json>` adds `--cameras ... --use-fixed-camera-params` to the
 command, to reuse a lens calibration from an earlier run.
 
-The printed options: `--camera-lens brown --feature-quality ultra --min-num-features 20000
---pc-quality high --dsm --dem-resolution 4 --orthophoto-resolution 1 --skip-3dmodel
+Three commands are printed (and saved in `odm_command.txt`). All share `--camera-lens brown
+--matcher-neighbors 16 --dsm --dem-resolution 4 --orthophoto-resolution 1 --skip-3dmodel
 --texturing-skip-global-seam-leveling --build-overviews --cog --max-concurrency N`, with N =
-logical processors minus 2 (`--odm-threads` overrides it). Photo GPS is not forced
-(`--force-gps` is left out), so the GCPs alone set the georeferencing.
+logical processors minus 2 (`--odm-threads` overrides it):
+
+| Variant | Extra options |
+| --- | --- |
+| Recommended | `--feature-quality high --min-num-features 10000 --pc-quality high` |
+| Higher quality, slower | `--feature-quality ultra --min-num-features 20000 --pc-quality high` |
+| Much faster, quick check | `--feature-quality high --min-num-features 10000 --matcher-type bow --pc-quality medium` |
+
+Photo GPS is not forced (`--force-gps` is left out), so the GCPs alone set the
+georeferencing.
 
 ## How it works
 

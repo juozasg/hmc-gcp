@@ -6,11 +6,10 @@ import os
 import shutil
 from pathlib import Path
 
-ODM_OPTIONS = [
+# shared by all variants
+COMMON = [
     "--camera-lens brown",
-    "--feature-quality ultra",
-    "--min-num-features 20000",
-    "--pc-quality high",
+    "--matcher-neighbors 16",
     "--dsm",
     "--dem-resolution 4",
     "--orthophoto-resolution 1",
@@ -18,6 +17,18 @@ ODM_OPTIONS = [
     "--texturing-skip-global-seam-leveling",
     "--build-overviews",
     "--cog",
+]
+
+# (title, explanation, variant options)
+VARIANTS = [
+    ("Recommended", "half-resolution features, matching limited to the 16 nearest photos",
+     ["--feature-quality high", "--min-num-features 10000", "--pc-quality high"]),
+    ("Higher quality, slower", "full-resolution features, twice the features per photo",
+     ["--feature-quality ultra", "--min-num-features 20000", "--pc-quality high"]),
+    ("Much faster, quick check", "bag-of-words matching, which may miss some matches; "
+     "medium point cloud",
+     ["--feature-quality high", "--min-num-features 10000", "--matcher-type bow",
+      "--pc-quality medium"]),
 ]
 
 
@@ -48,10 +59,10 @@ def default_threads() -> int:
 
 
 def build_project(odm_dir: Path, photos: list[Path], gcp_list: Path,
-                  cameras: Path | None = None, threads: int | None = None) -> str:
+                  cameras: Path | None = None, threads: int | None = None) -> list:
     """Fill odm_dir/images with the photos, put gcp_list.txt next to it, and write
     odm_command.txt. Photos no longer in the list are removed from odm_dir/images.
-    Returns the ODM Console command."""
+    Returns [(title, explanation, ODM Console command)], recommended first."""
     odm_dir = Path(odm_dir)
     img_dir = odm_dir / "images"
     img_dir.mkdir(parents=True, exist_ok=True)
@@ -66,19 +77,24 @@ def build_project(odm_dir: Path, photos: list[Path], gcp_list: Path,
             counts["removed"] += 1
     shutil.copy2(gcp_list, odm_dir / "gcp_list.txt")
 
-    opts = list(ODM_OPTIONS) + [f"--max-concurrency {threads or default_threads()}"]
+    tail = [f"--max-concurrency {threads or default_threads()}"]
     if cameras:
-        opts += [f'--cameras "{Path(cameras).resolve()}"', "--use-fixed-camera-params"]
-    cmd = f'run "{odm_dir.resolve()}" ' + " ".join(opts)
-    (odm_dir / "odm_command.txt").write_text(
-        "Run in the ODM Console:\n\n" + cmd + "\n\n"
-        "To redo only part of a run, add e.g. --rerun-from opensfm (after a new\n"
-        "gcp_list.txt) or --rerun-from odm_dem (after changing DSM options).\n",
-        encoding="utf-8")
+        tail += [f'--cameras "{Path(cameras).resolve()}"', "--use-fixed-camera-params"]
+    cmds = []
+    for title, why, opts in VARIANTS:
+        cmd = f'run "{odm_dir.resolve()}" ' + " ".join(opts + COMMON + tail)
+        cmds.append((title, why, cmd))
+    text = "Run in the ODM Console:\n\n"
+    for title, why, cmd in cmds:
+        text += f"{title}: {why}\n{cmd}\n\n"
+    text += ("To redo only part of a run, add e.g. --rerun-from opensfm (after a new\n"
+             "gcp_list.txt or other matching options) or --rerun-from odm_dem (after changing\n"
+             "DSM options).\n")
+    (odm_dir / "odm_command.txt").write_text(text, encoding="utf-8")
     print(f"ODM project {odm_dir}: {len(photos)} photos "
           f"({counts['linked']} linked, {counts['copied']} copied, {counts['kept']} unchanged, "
           f"{counts['removed']} removed), gcp_list.txt")
-    return cmd
+    return cmds
 
 
 def default_dir(images: Path, survey_folder: Path | None) -> Path:

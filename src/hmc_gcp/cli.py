@@ -20,7 +20,7 @@ def _build_odm(s, a, out: Path, sv, r: dict):
     from .odm import build_project, default_dir
     odm_dir = a.odm_dir or default_dir(a.images, sv.folder if sv else None)
     photos = [Path(sh.path) for sh in s.shots.values()]
-    cmd = build_project(odm_dir, photos, out / "gcp_list.txt", a.odm_cameras, a.odm_threads)
+    cmds = build_project(odm_dir, photos, out / "gcp_list.txt", a.odm_cameras, a.odm_threads)
     geo = Path(odm_dir) / "geo.txt"
     if a.no_geo:
         if geo.exists():
@@ -30,8 +30,9 @@ def _build_odm(s, a, out: Path, sv, r: dict):
         print(f"geo.txt: {n} photo positions with corrected heights")
     if r.get("control", 0) < 3:
         print("WARNING: fewer than 3 control GCPs in gcp_list.txt; ODM needs at least 3.")
-    print("\nRun in the ODM Console:\n")
-    print(cmd)
+    print("\nRun in the ODM Console:")
+    for title, why, cmd in cmds:
+        print(f"\n{title}: {why}\n{cmd}")
     print(f"\n(also saved in {Path(odm_dir) / 'odm_command.txt'})")
 
 
