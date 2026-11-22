@@ -190,6 +190,26 @@ are left out of it; the output says how much was used. Methods:
 Output: `<target>_match.tif` (or `-o`), tiled with overviews, in the target's grid. Shadows
 from the sun cannot be removed by a colour transform.
 
+### Sun shadows: shadows
+
+`shadows` brightens cast sun shadows in an orthophoto (e.g. a sunny day with a low sun):
+
+    uv run hmc-gcp shadows "<day>/odm/odm_orthophoto/odm_orthophoto.tif" --dsm "<day>/odm/odm_dem/dsm.tif" --photos "<day>/uav/ortho"
+
+The sun position is computed for the photos' median capture time (camera clock in
+Lithuanian winter time, `--utc-offset 2`; or give `--time` or `--sun AZ EL`). Shadows are
+traced through the DSM toward the sun, which only marks candidates. The correction is
+calibrated from the image itself: sand just inside the predicted shadows is mapped onto
+sand just outside (per channel, so no camera tone curve is assumed). A pixel near a
+predicted shadow is corrected to the degree that it is darker and bluer than nearby
+sunlit sand in the way shadow is, so dark mineral laminae, wet sand and water are left
+alone. Use it before `colormatch`, which should be fitted on the shadow-free image.
+
+It works for shadows of objects the DSM resolves (logs, debris, scarps). Shadows of
+vegetation and of the dune itself are only partly found, because the DSM captures them
+poorly; `--search` (default 0.3 m) widens the area checked around predicted shadows.
+Slope shading is not corrected. `--mask` also writes the predicted shadow mask.
+
 ## Quick preview in QGIS: worldfiles
 
 `worldfiles` places the raw photos on the map from their metadata alone, for a rough

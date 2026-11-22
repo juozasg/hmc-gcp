@@ -279,6 +279,35 @@ def main(argv=None):
                    help="averaging cell in metres; larger tolerates more misalignment between "
                         "the days (default 0.5)")
 
+    sh = sub.add_parser("shadows",
+                        help="remove cast sun shadows from an orthophoto, using the DSM and the "
+                             "sun position to find them and the image to calibrate")
+    sh.add_argument("ortho", type=Path, help="orthophoto (RGB(A) GeoTIFF, tiled)")
+    sh.add_argument("--dsm", type=Path, required=True, help="DSM of the same survey (odm_dem/dsm.tif)")
+    tm = sh.add_mutually_exclusive_group(required=True)
+    tm.add_argument("--photos", type=Path,
+                    help="folder with the survey's photos: the sun is computed for their median "
+                         "capture time")
+    tm.add_argument("--time", help="capture time, e.g. 2026-11-06T12:47 (local, see --utc-offset) "
+                                   "or 2026-11-06T10:47Z")
+    tm.add_argument("--sun", type=float, nargs=2, metavar=("AZ", "EL"),
+                    help="sun azimuth and elevation in degrees, instead of a time")
+    sh.add_argument("--utc-offset", type=float, default=2.0, metavar="H",
+                    help="camera clock / --time offset from UTC in hours (default 2: Lithuanian "
+                         "winter time; 3 in summer)")
+    sh.add_argument("-o", "--out", type=Path,
+                    help="output file (default: <ortho>_noshadow.tif next to it)")
+    sh.add_argument("--mask", action="store_true",
+                    help="also write the predicted shadow mask (<ortho>_shadowmask.tif, DSM grid)")
+    sh.add_argument("--tolerance", type=float, default=0.05, metavar="M",
+                    help="height an obstacle must rise above the sun line to cast a shadow "
+                         "(default 0.05; larger ignores DSM noise)")
+    sh.add_argument("--search", type=float, default=0.3, metavar="M",
+                    help="margin around predicted shadows where pixels are checked, for DSM "
+                         "inaccuracy (default 0.3)")
+    sh.add_argument("--band", type=float, default=0.3, metavar="M",
+                    help="width of the inside/outside bands used for calibration (default 0.3)")
+
     w = sub.add_parser("worldfiles",
                        help="roughly georeference photos from their metadata (one .vrt per "
                             "photo, for previews in QGIS)")
@@ -308,6 +337,26 @@ def main(argv=None):
         try:
             orthorect.run(odm, a.out or odm / "orthorect", a.images, a.res, a.margin, a.interp)
         except (ValueError, FileNotFoundError, RuntimeError) as e:
+            p.error(str(e))
+        return
+    if a.cmd == "shadows":
+        from datetime import datetime, timedelta, timezone
+        from . import shadows
+        when = None
+        if a.photos:
+            when, first, last = shadows.photo_time(a.photos, a.utc_offset)
+            print(f"Photos taken {first:%H:%M}-{last:%H:%M} UTC; using the median {when:%H:%M} UTC")
+        elif a.time:
+            t = a.time.replace("Z", "+00:00")
+            when = datetime.fromisoformat(t)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone(timedelta(hours=a.utc_offset)))
+        out = a.out or a.ortho.with_name(a.ortho.stem + "_noshadow.tif")
+        mask = a.ortho.with_name(a.ortho.stem + "_shadowmask.tif") if a.mask else None
+        try:
+            shadows.run(a.ortho, a.dsm, out, when, tuple(a.sun) if a.sun else None,
+                        a.tolerance, a.search, a.band, mask)
+        except (ValueError, FileNotFoundError) as e:
             p.error(str(e))
         return
     if a.cmd == "colormatch":
