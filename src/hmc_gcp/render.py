@@ -65,9 +65,9 @@ def label(surf, font, text, pos, color=WHITE, underline=False):
 
 
 def short_name(name: str) -> str:
-    """Last part of a name split at '-' and '_' (20261106-L1G1 -> L1G1, DJI_0462.JPG -> 0462)."""
-    stem = name.rsplit(".", 1)[0] if "." in name else name
-    return re.split(r"[-_]", stem)[-1] or stem
+    """Last part of a name split at '-' and '_' (20261106-L1G1 -> L1G1,
+    DJI_0462.JPG -> 0462.JPG)."""
+    return re.split(r"[-_]", name)[-1] or name
 
 
 MIN_CANVAS = (300, 300)

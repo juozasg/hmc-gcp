@@ -16,6 +16,8 @@ from .session import ACCEPTED, Session
 PANEL_W = 380
 INFO_H = 372
 ROW_H = 20
+MAX_MAG = 40.0  # most screen pixels per photo pixel
+MIN_MAG_FIT = 0.5  # zoom out to half the whole-photo fit
 
 HELP = (
     "<b>hmc-gcp tag: keys</b><br><br>"
@@ -363,15 +365,29 @@ class TagApp:
 
     def zoom_by(self, f, screen_pos=None):
         """Zoom; with screen_pos, keep the image point under the mouse where it is."""
-        old = self.zoom
-        self.zoom = max(0.2, min(20.0, self.zoom * f))
-        if screen_pos is not None and self.view and self.zoom != old:
-            cx, cy, scale, ox, oy, vw, vh = self.view
+        if not self.view:
+            self.zoom *= f
+            self.dirty = True
+            return
+        # limit the real magnification (same limits for every photo), not the factor
+        cx, cy, scale, ox, oy, vw, vh = self.view
+        lo, hi = self._mag_limits()
+        new_scale = max(lo, min(hi, scale * f))
+        if abs(new_scale - scale) < 1e-9:
+            return
+        self.zoom *= new_scale / scale
+        if screen_pos is not None:
             dx, dy = screen_pos[0] - ox - vw / 2, screen_pos[1] - oy - vh / 2
-            new_scale = scale * self.zoom / old
             self.view_center = [cx + dx / scale - dx / new_scale,
                                 cy + dy / scale - dy / new_scale]
         self.dirty = True
+
+    def _mag_limits(self):
+        """Allowed magnification: from half the whole-photo fit up to MAX_MAG."""
+        sh = self.s.shots[self.it.image]
+        vw, vh = self.canvas.w - 20, self.canvas.h - 20
+        fit = min(vw / sh.width, vh / sh.height)
+        return min(fit * MIN_MAG_FIT, MAX_MAG), MAX_MAG
 
     def toggle_help(self):
         if self.help.visible:
@@ -414,7 +430,13 @@ class TagApp:
             scale = min(vw / sh.width, vh / sh.height) * self.zoom
             c = [sh.width / 2, sh.height / 2]
         else:
-            scale = min(vw, vh) / (2 * max(8.0, hs))
+            scale = min(vw, vh) / (2 * hs)
+        # keep the zoom inside the same limits on every photo
+        lo, hi = self._mag_limits()
+        if not lo <= scale <= hi:
+            clamped = max(lo, min(hi, scale))
+            self.zoom *= clamped / scale
+            scale = clamped
         if self.view_center is not None:
             c = self.view_center
         cx, cy = float(c[0]), float(c[1])
@@ -473,7 +495,7 @@ class TagApp:
         surf.set_clip(None)
         pygame.draw.rect(surf, R.GREY, clip, 1)
         mode = "whole photo" if self.fit else ("overview" if self.overview else "detail")
-        R.label(surf, self.font, f"{it.gcp}  in  {it.image}   ({mode}, zoom {self.zoom:.2f})",
+        R.label(surf, self.font, f"{it.gcp}  in  {it.image}   ({mode}, {scale:.2f}x)",
                 (ox + 6, oy + 6), pcol)
         if self.msg and time.time() - self.msg_t < 6:
             R.label(surf, self.font, self.msg, (ox + 6, oy + vh - 24), R.CYAN)
