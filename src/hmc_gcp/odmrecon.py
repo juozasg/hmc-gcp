@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -109,6 +110,19 @@ class Reconstruction:
         if ref is None:
             ref = json.loads((odm_dir / "opensfm" / "reference_lla.json").read_text())
         self.ref = (ref["latitude"], ref["longitude"], ref.get("altitude", 0.0))
+        # A georeferenced ODM run exports reconstruction.json to its UTM zone minus the
+        # offset in odm_georeferencing/coords.txt (the topocentric original is kept as
+        # reconstruction.topocentric.json). Use that frame directly when present.
+        self.offset = self.proj_crs = None
+        coords = odm_dir / "odm_georeferencing" / "coords.txt"
+        if (odm_dir / "opensfm" / "reconstruction.topocentric.json").exists() and coords.exists():
+            lines = coords.read_text().split("\n")
+            m = re.search(r"UTM\s*(\d+)\s*([NS])", lines[0], re.I)
+            if m:
+                zone, hemi = int(m.group(1)), m.group(2).upper()
+                self.proj_crs = CRS.from_epsg((32600 if hemi == "N" else 32700) + zone)
+                ox, oy = (float(v) for v in lines[1].split()[:2])
+                self.offset = np.array([ox, oy, 0.0])
         cams = {k: Camera.from_json(v) for k, v in rec["cameras"].items()}
         self.shots: dict[str, Shot] = {}
         for name, s in rec["shots"].items():
@@ -131,7 +145,21 @@ class Reconstruction:
         return np.stack([e, n, u], axis=-1)
 
     def fit_map(self, crs: CRS, bounds, zrange):
-        """Fit a fast quadratic map->topocentric transform over the survey area."""
+        """Prepare the map -> reconstruction transform over the survey area: exact (an
+        offset) for ODM's exported UTM frame, else a quadratic fit to the topocentric one."""
+        crs = CRS.from_user_input(crs)
+        if self.offset is not None:
+            self.crs = crs
+            self._to_proj = None if crs == self.proj_crs else \
+                Transformer.from_crs(crs, self.proj_crs, always_xy=True)
+            self._from_proj = None if crs == self.proj_crs else \
+                Transformer.from_crs(self.proj_crs, crs, always_xy=True)
+            for s in self.shots.values():
+                c = s.centre + self.offset
+                if self._from_proj is not None:
+                    c[0], c[1] = self._from_proj.transform(c[0], c[1])
+                s.centre_map = c
+            return 0.0
         xmin, ymin, xmax, ymax = bounds
         xs = np.linspace(xmin, xmax, 25)
         ys = np.linspace(ymin, ymax, 25)
@@ -158,6 +186,12 @@ class Reconstruction:
         return np.stack([np.ones_like(x), x, y, z, x * x, x * y, y * y, x * z, y * z], axis=-1)
 
     def map_to_topo(self, X, Y, Z) -> np.ndarray:
+        """Map coordinates -> reconstruction frame (N x 3)."""
+        if self.offset is not None:
+            X, Y = np.asarray(X, float), np.asarray(Y, float)
+            if self._to_proj is not None:
+                X, Y = self._to_proj.transform(X, Y)
+            return np.stack([X - self.offset[0], Y - self.offset[1], np.asarray(Z, float)], -1)
         return self._design(X, Y, Z) @ self._coef
 
     def _topo_to_map(self, p, to_map):
