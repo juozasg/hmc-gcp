@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import cv2
 import numpy as np
 import pygame
@@ -51,12 +53,21 @@ def ring(surf, pos, color, r, width=2):
     pygame.draw.circle(surf, color, (int(pos[0]), int(pos[1])), r, width)
 
 
-def label(surf, font, text, pos, color=WHITE):
+def label(surf, font, text, pos, color=WHITE, underline=False):
     img = font.render(text, True, color)
-    bg = pygame.Surface((img.get_width() + 6, img.get_height() + 2), pygame.SRCALPHA)
+    bg = pygame.Surface((img.get_width() + 6, img.get_height() + 4), pygame.SRCALPHA)
     bg.fill((0, 0, 0, 160))
     surf.blit(bg, (pos[0] - 3, pos[1] - 1))
     surf.blit(img, pos)
+    if underline:
+        y = pos[1] + img.get_height()
+        pygame.draw.line(surf, color, (pos[0], y), (pos[0] + img.get_width(), y), 2)
+
+
+def short_name(name: str) -> str:
+    """Last part of a name split at '-' and '_' (20261106-L1G1 -> L1G1, DJI_0462.JPG -> 0462)."""
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return re.split(r"[-_]", stem)[-1] or stem
 
 
 MIN_CANVAS = (300, 300)

@@ -234,6 +234,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | I J K L | Nudge point 1 px (Shift: 5 px) |
 | Right / Left | Next / previous pair |
 | N | Next unreviewed pair |
+| Pair list click | Open that pair (list under the buttons; wheel or the bar on its right scrolls) |
 | PgDn / PgUp | Next / previous GCP |
 | U | Reset pair to unreviewed |
 | R | Run detection again |
@@ -244,6 +245,11 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | S | Save and export |
 | H / F1 | Help |
 | Q / Esc | Save, export and quit |
+
+The pair list shows every pair not hidden (by number, GCP and photo, shortened to the part
+after the last `-` or `_`), coloured by status, with the current pair highlighted. The GCP
+name is also drawn next to the point, underlined, in the point's colour (green accepted or
+detected, orange weak detection, cyan by hand); the title in the top left uses the same colour.
 
 Colours: yellow ring = search area around the prediction, green box = detected target,
 orange box = weak candidate without a centre dot (the point then starts at the prediction),
