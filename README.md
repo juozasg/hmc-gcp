@@ -171,6 +171,18 @@ for orientation only. Options: `-o` output folder, `--crs` (default EPSG:3346),
 `--plan`, `--height-offset M` (add to the height above take-off, e.g.
 negative if you took off from a dune), `--focal35`.
 
+Phone photos work too, for example photos of the beach surface taken pointing down. They
+have GPS but no height above ground, and usually no heading or tilt, so give the height
+of the phone above the ground and, if you know it, the direction the top of the photo
+points (`--heading`, degrees from north; default north, or the phone's compass direction
+if it saved one). They are taken as looking straight down. Without a 35 mm focal length
+in EXIF, 26 mm (a typical main phone camera) is assumed:
+
+    uv run hmc-gcp worldfiles C:/photos/beach --height 1.5
+
+Phone GPS is good to a few metres, more than the footprint of a photo taken from 1.5 m
+(about 2 x 1.5 m), so treat the position as approximate.
+
 ## How it works
 
 1. **Predict.** For every photo, the GPS position, height above take-off and gimbal
