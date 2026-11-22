@@ -252,6 +252,18 @@ def main(argv=None):
                         "orthorect folder: its mosaic_gain.tif, else mosaic.tif)")
     g.add_argument("-o", "--out", type=Path, help="output file (default: mosaic_gain.tif)")
 
+    m = sub.add_parser("orthomatch",
+                       help="give an orthophoto (e.g. ODM's) the large-scale brightness of a "
+                            "gain-balanced orthorect mosaic, keeping its own detail")
+    m.add_argument("target", type=Path, help="orthophoto to correct (RGB(A) GeoTIFF, tiled)")
+    m.add_argument("--reference", type=Path, required=True,
+                   help="gain-balanced mosaic of the same survey (orthogain's mosaic_gain.tif)")
+    m.add_argument("-o", "--out", type=Path,
+                   help="output file (default: <target>_gain.tif next to the target)")
+    m.add_argument("--window", type=float, default=3.0, metavar="M",
+                   help="size of the brightness transfer in metres (default 3); smaller follows "
+                        "the reference more closely but carries more of its seams")
+
     w = sub.add_parser("worldfiles",
                        help="roughly georeference photos from their metadata (one .vrt per "
                             "photo, for previews in QGIS)")
@@ -281,6 +293,14 @@ def main(argv=None):
         try:
             orthorect.run(odm, a.out or odm / "orthorect", a.images, a.res, a.margin, a.interp)
         except (ValueError, FileNotFoundError, RuntimeError) as e:
+            p.error(str(e))
+        return
+    if a.cmd == "orthomatch":
+        from . import orthomatch
+        out = a.out or a.target.with_name(a.target.stem + "_gain.tif")
+        try:
+            orthomatch.run(a.target, a.reference, out, a.window)
+        except (ValueError, FileNotFoundError) as e:
             p.error(str(e))
         return
     if a.cmd == "orthogain":

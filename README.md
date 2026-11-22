@@ -151,6 +151,23 @@ Tested on synthetic data: targets in the mosaic were within 1 px (≤2 cm) of th
 positions; random per-photo gains of ±14% dropped to 2–3% after orthogain, and a gained
 mosaic matched its reference to within 0.1%.
 
+### Gains on the ODM orthophoto: orthomatch
+
+The orthorect mosaic switches photo along hard seams, which can cut thin features and
+show up as edges to a neural network. `orthomatch` keeps the ODM orthophoto (its own
+texture blending and detail) but gives it the large-scale brightness of the gain-balanced
+mosaic of the same survey:
+
+    uv run hmc-gcp orthomatch "<day>/odm/odm_orthophoto/odm_orthophoto.tif" --reference "<day>/odm/orthorect/mosaic_gain.tif"
+
+Both are averaged on a coarse grid, and the per-channel ratio is smoothed over `--window`
+metres (default 3) and multiplied into the ODM orthophoto. Brightness steps finer than the
+window, such as ODM's own patch edges, stay; a smaller window follows the reference more
+closely but also carries more of its seams. Output: `<target>_gain.tif` (or `-o`), tiled,
+with overviews, in the target's grid. It works tile by tile, so it needs little memory.
+Use the day's own mosaic as reference; if that mosaic was matched to the other day with
+`orthogain --reference`, the ODM orthophoto gets that match too.
+
 ## Quick preview in QGIS: worldfiles
 
 `worldfiles` places the raw photos on the map from their metadata alone, for a rough
