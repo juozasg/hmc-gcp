@@ -247,7 +247,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | Q / Esc | Save, export and quit |
 
 The pair list shows every pair not hidden (by number, GCP and photo, shortened to the part
-after the last `-` or `_`), coloured by status, with the current pair highlighted. The GCP
+after the last `-` or `_`, e.g. `L1G1  0273`; the title shows `L1G1 in 0273.JPG`), coloured by status, with the current pair highlighted. The GCP
 name is also drawn next to the point, underlined, in the point's colour (green accepted or
 detected, orange weak detection, cyan by hand); the title in the top left uses the same colour.
 

@@ -64,9 +64,11 @@ def label(surf, font, text, pos, color=WHITE, underline=False):
         pygame.draw.line(surf, color, (pos[0], y), (pos[0] + img.get_width(), y), 2)
 
 
-def short_name(name: str) -> str:
+def short_name(name: str, ext: bool = False) -> str:
     """Last part of a name split at '-' and '_' (20261106-L1G1 -> L1G1,
-    DJI_0462.JPG -> 0462.JPG)."""
+    DJI_0462.JPG -> 0462, or 0462.JPG with ext=True)."""
+    if not ext and "." in name:
+        name = name.rsplit(".", 1)[0]
     return re.split(r"[-_]", name)[-1] or name
 
 

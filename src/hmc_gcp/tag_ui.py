@@ -495,7 +495,7 @@ class TagApp:
         surf.set_clip(None)
         pygame.draw.rect(surf, R.GREY, clip, 1)
         mode = "whole photo" if self.fit else ("overview" if self.overview else "detail")
-        R.label(surf, self.font, f"{it.gcp}  in  {it.image}   ({mode}, {scale:.2f}x)",
+        R.label(surf, self.font, f"{R.short_name(it.gcp)} in {R.short_name(it.image, ext=True)}   ({mode}, {scale:.2f}x)",
                 (ox + 6, oy + 6), pcol)
         if self.msg and time.time() - self.msg_t < 6:
             R.label(surf, self.font, self.msg, (ox + 6, oy + vh - 24), R.CYAN)
