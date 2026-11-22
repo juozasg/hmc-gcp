@@ -252,6 +252,21 @@ def main(argv=None):
                         "orthorect folder: its mosaic_gain.tif, else mosaic.tif)")
     g.add_argument("-o", "--out", type=Path, help="output file (default: mosaic_gain.tif)")
 
+    w = sub.add_parser("worldfiles",
+                       help="roughly georeference photos from their metadata (one .vrt per "
+                            "photo, for previews in QGIS)")
+    w.add_argument("images", type=Path, help="survey folder, or folder with the drone photos (JPG)")
+    w.add_argument("-o", "--out", type=Path,
+                   help="output folder (default: <images folder>_vrt next to it)")
+    w.add_argument("--crs", default="EPSG:3346", help="output CRS (default EPSG:3346, LKS94)")
+    w.add_argument("--plan", type=Path,
+                   help="Litchi waypoint CSV for headings (found automatically in survey-folder mode)")
+    w.add_argument("--no-plan", action="store_true", help="ignore the flight plan")
+    w.add_argument("--height-offset", type=float, default=0.0, metavar="M",
+                   help="add to the height above take-off, e.g. if you took off from a dune "
+                        "(negative) or below the beach (positive); default 0")
+    w.add_argument("--focal35", type=float, help="35 mm equivalent focal length (default: EXIF)")
+
     a = p.parse_args(argv)
     if a.cmd == "orthorect":
         odm = _odm_folder(p, a.folder)
@@ -278,6 +293,15 @@ def main(argv=None):
     if sv:
         a.images = sv.images
         print(f"Survey {sv.name}: photos {sv.images}")
+    if a.cmd == "worldfiles":
+        from . import worldfiles
+        plan = None if a.no_plan else (a.plan or (sv.plan if sv else None))
+        out = a.out or a.images.parent / f"{a.images.name}_vrt"
+        print(f"  plan: {plan or 'none'}")
+        n = worldfiles.run(a.images, out, a.crs, plan, a.height_offset, a.focal35)
+        print(f"Wrote {n} .vrt files to {out}. In QGIS: drag them into a group "
+              f"(Layer > Add Layer > Add Raster Layer, select all).")
+        return
     out = a.out or _default_out(a.images)
 
     if a.cmd in ("tag", "pick-checkpoints"):

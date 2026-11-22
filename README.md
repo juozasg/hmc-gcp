@@ -151,6 +151,25 @@ Tested on synthetic data: targets in the mosaic were within 1 px (≤2 cm) of th
 positions; random per-photo gains of ±14% dropped to 2–3% after orthogain, and a gained
 mosaic matched its reference to within 0.1%.
 
+## Quick preview in QGIS: worldfiles
+
+`worldfiles` places the raw photos on the map from their metadata alone, for a rough
+look before (or without) ODM:
+
+    uv run hmc-gcp worldfiles E:/hmc-data/neringa/surveys/2026-11-06-L1-smiltyne
+
+It writes one small `.vrt` file per photo to `<photo folder>_vrt` (e.g. `uav/ortho_vrt`).
+Each points to the original JPG (which is not changed) and holds its position, scale,
+rotation and CRS. In QGIS, create a group, then Layer > Add Layer > Add Raster Layer and
+select all the `.vrt` files (or drag them in from the file browser).
+
+The footprint comes from the GPS position, the height above take-off (`RelativeAltitude`),
+the heading (flight plan if found, else EXIF), gimbal pitch and focal length, with the
+ground flat at take-off level. Expect a few metres of error (DJI GPS and heading), so use it
+for orientation only. Options: `-o` output folder, `--crs` (default EPSG:3346),
+`--plan` / `--no-plan`, `--height-offset M` (add to the height above take-off, e.g.
+negative if you took off from a dune), `--focal35`.
+
 ## How it works
 
 1. **Predict.** For every photo, the GPS position, height above take-off and gimbal
