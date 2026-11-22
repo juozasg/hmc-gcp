@@ -220,7 +220,7 @@ viewer. Pairs you have accepted, rejected or reset by hand are never auto-accept
 | `--odm-threads` | ODM `--max-concurrency` (default: logical processors minus 2) |
 | `--show-rejected` | Start with rejected pairs shown when stepping (V toggles) |
 | `--export-only` | Write the outputs from saved tags without opening the window |
-| `--window 1500x950` | Window size |
+| `--window 1500x950` | Starting window size; the window can be resized by dragging its edge, and the image area stretches with it |
 
 ## tag: keys
 

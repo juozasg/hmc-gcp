@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 
 import pygame
@@ -58,7 +59,7 @@ class TagApp:
         self.s = session
         self.show_rejected = show_rejected
         self.W, self.H = size
-        self.screen = pygame.display.set_mode(size)
+        self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption("hmc-gcp tag")
         self.ui = pygame_gui.UIManager(size)
         self.ui.preload_fonts([{'name': 'noto_sans', 'point_size': 14, 'style': 'bold',
@@ -269,12 +270,11 @@ class TagApp:
         old = self.zoom
         self.zoom = max(0.2, min(20.0, self.zoom * f))
         if screen_pos is not None and self.view and self.zoom != old:
-            x0, y0, scale, ox, oy, side = self.view
-            px = x0 + (screen_pos[0] - ox) / scale
-            py = y0 + (screen_pos[1] - oy) / scale
+            cx, cy, scale, ox, oy, vw, vh = self.view
+            dx, dy = screen_pos[0] - ox - vw / 2, screen_pos[1] - oy - vh / 2
             new_scale = scale * self.zoom / old
-            self.view_center = [px - (screen_pos[0] - ox - side / 2) / new_scale,
-                                py - (screen_pos[1] - oy - side / 2) / new_scale]
+            self.view_center = [cx + dx / scale - dx / new_scale,
+                                cy + dy / scale - dy / new_scale]
         self.dirty = True
 
     def toggle_help(self):
@@ -311,26 +311,35 @@ class TagApp:
         else:
             hs = max(5 * exp, 40) / self.zoom
             c = self.cur
+        # the image area fills the canvas; hs is the half-size of its shorter side
+        ox, oy = 10, 10
+        vw, vh = self.canvas.w - 20, self.canvas.h - 20
         if self.fit:
-            hs = max(sh.width, sh.height) / 2 / self.zoom
+            scale = min(vw / sh.width, vh / sh.height) * self.zoom
             c = [sh.width / 2, sh.height / 2]
+        else:
+            scale = min(vw, vh) / (2 * max(8.0, hs))
         if self.view_center is not None:
             c = self.view_center
-        hs = max(8, int(hs))
-        x0, y0 = int(round(c[0])) - hs, int(round(c[1])) - hs
-        crop = crop_padded(img, x0, y0, x0 + 2 * hs, y0 + 2 * hs)
-        side = min(self.canvas.w, self.canvas.h) - 20
-        scale = side / (2 * hs)
-        ox = (self.canvas.w - side) // 2
-        oy = (self.canvas.h - side) // 2
-        surf.blit(R.to_surface(crop, (side, side)), (ox, oy))
-        self.view = (x0, y0, scale, ox, oy, side)
+        cx, cy = float(c[0]), float(c[1])
+        self.view = (cx, cy, scale, ox, oy, vw, vh)
 
         def sc(p):
-            return ox + (p[0] - x0) * scale, oy + (p[1] - y0) * scale
+            return ox + vw / 2 + (p[0] - cx) * scale, oy + vh / 2 + (p[1] - cy) * scale
 
-        clip = pygame.Rect(ox, oy, side, side)
+        clip = pygame.Rect(ox, oy, vw, vh)
         surf.set_clip(clip)
+        # crop only the visible part of the photo; outside it stays background
+        hx, hy = vw / 2 / scale, vh / 2 / scale
+        x0 = max(0, int(math.floor(cx - hx)))
+        y0 = max(0, int(math.floor(cy - hy)))
+        x1 = min(sh.width, int(math.ceil(cx + hx)) + 1)
+        y1 = min(sh.height, int(math.ceil(cy + hy)) + 1)
+        if x1 > x0 and y1 > y0:
+            crop = crop_padded(img, x0, y0, x1, y1)
+            size = (max(1, round((x1 - x0) * scale)), max(1, round((y1 - y0) * scale)))
+            sx, sy = sc((x0, y0))
+            surf.blit(R.to_surface(crop, size), (round(sx), round(sy)))
         R.ring(surf, sc(pred), R.YELLOW, rad * scale, 2)
         R.cross(surf, sc(pred), R.YELLOW, 6, 1)
         # every other GCP from the GeoPackage, projected into this photo (purple);
@@ -368,7 +377,7 @@ class TagApp:
         R.label(surf, self.font, f"{it.gcp}  in  {it.image}   ({mode}, zoom {self.zoom:.2f})",
                 (ox + 6, oy + 6))
         if self.msg and time.time() - self.msg_t < 6:
-            R.label(surf, self.font, self.msg, (ox + 6, oy + side - 24), R.CYAN)
+            R.label(surf, self.font, self.msg, (ox + 6, oy + vh - 24), R.CYAN)
 
     def _update_info(self):
         if not self.items:
@@ -452,18 +461,17 @@ class TagApp:
         return True
 
     def _view_center(self):
-        x0, y0, scale, ox, oy, side = self.view
-        return [x0 + side / 2 / scale, y0 + side / 2 / scale]
+        return [self.view[0], self.view[1]]
 
     def _on_click(self, e):
         """Right click: place the point by hand (Shift: and accept)."""
         if not self.view or self.help.visible or not self.items:
             return
-        x0, y0, scale, ox, oy, side = self.view
-        if not pygame.Rect(ox, oy, side, side).collidepoint(e.pos):
+        cx, cy, scale, ox, oy, vw, vh = self.view
+        if not pygame.Rect(ox, oy, vw, vh).collidepoint(e.pos):
             return
         self.view_center = self._view_center()  # keep the view still
-        self.cur = [x0 + (e.pos[0] - ox) / scale, y0 + (e.pos[1] - oy) / scale]
+        self.cur = [cx + (e.pos[0] - ox - vw / 2) / scale, cy + (e.pos[1] - oy - vh / 2) / scale]
         self.edited = True
         self.dirty = True
         if pygame.key.get_mods() & pygame.KMOD_SHIFT:
@@ -474,7 +482,9 @@ class TagApp:
         running = True
         if e.type == pygame.QUIT:
             return False
-        if e.type == pygame.KEYDOWN:
+        if e.type == pygame.VIDEORESIZE:
+            R.resize_window(self, e.w, e.h, PANEL_W)
+        elif e.type == pygame.KEYDOWN:
             running = self._on_key(e)
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 3 and self.canvas.collidepoint(e.pos):
             self._on_click(e)

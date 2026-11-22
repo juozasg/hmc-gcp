@@ -57,3 +57,20 @@ def label(surf, font, text, pos, color=WHITE):
     bg.fill((0, 0, 0, 160))
     surf.blit(bg, (pos[0] - 3, pos[1] - 1))
     surf.blit(img, pos)
+
+
+MIN_CANVAS = (300, 300)
+
+
+def resize_window(app, w: int, h: int, panel_w: int):
+    """Adapt an app with a right-hand pygame_gui panel to a new window size."""
+    w = max(w, panel_w + MIN_CANVAS[0])
+    h = max(h, MIN_CANVAS[1])
+    app.W, app.H = w, h
+    app.screen = pygame.display.get_surface()
+    app.ui.set_window_resolution((w, h))
+    app.canvas = pygame.Rect(0, 0, w - panel_w, h)
+    app.canvas_surf = pygame.Surface(app.canvas.size)
+    app.panel.set_relative_position((w - panel_w, 0))
+    app.panel.set_dimensions((panel_w, h))
+    app.dirty = True

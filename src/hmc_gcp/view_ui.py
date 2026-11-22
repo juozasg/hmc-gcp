@@ -47,7 +47,7 @@ class ViewApp:
         pygame.display.init()
         pygame.font.init()
         self.W, self.H = size
-        self.screen = pygame.display.set_mode(size)
+        self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
         pygame.display.set_caption("hmc-gcp view")
         self.ui = pygame_gui.UIManager(size)
         self.ui.preload_fonts([{'name': 'noto_sans', 'point_size': 14, 'style': 'bold',
@@ -312,7 +312,9 @@ class ViewApp:
         running = True
         if e.type == pygame.QUIT:
             return False
-        if e.type == pygame.KEYDOWN:
+        if e.type == pygame.VIDEORESIZE:
+            R.resize_window(self, e.w, e.h, PANEL_W)
+        elif e.type == pygame.KEYDOWN:
             running = self._on_key(e)
         elif e.type == pygame.MOUSEWHEEL and self.canvas.collidepoint(pygame.mouse.get_pos()):
             self.zoom_at(1.25 if e.y > 0 else 0.8, pygame.mouse.get_pos())
