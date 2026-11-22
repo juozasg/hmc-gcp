@@ -27,18 +27,23 @@ class Grid:
     width: int
     height: int
     epsg: int | None
+    res_y: float | None = None  # pixel height if it differs from res (pixel width)
+
+    @property
+    def ry(self) -> float:
+        return self.res if self.res_y is None else self.res_y
 
     def col_row(self, x, y):
         """Fractional pixel coordinates (pixel centres at .5 offsets removed: centre = 0)."""
-        return (np.asarray(x) - self.x0) / self.res - 0.5, (self.y0 - np.asarray(y)) / self.res - 0.5
+        return (np.asarray(x) - self.x0) / self.res - 0.5, (self.y0 - np.asarray(y)) / self.ry - 0.5
 
     def xy(self, col, row):
         """Map coordinates of pixel centres."""
-        return self.x0 + (np.asarray(col) + 0.5) * self.res, self.y0 - (np.asarray(row) + 0.5) * self.res
+        return self.x0 + (np.asarray(col) + 0.5) * self.res, self.y0 - (np.asarray(row) + 0.5) * self.ry
 
     @property
     def bounds(self):
-        return self.x0, self.y0 - self.height * self.res, self.x0 + self.width * self.res, self.y0
+        return self.x0, self.y0 - self.height * self.ry, self.x0 + self.width * self.res, self.y0
 
 
 def _geokeys(page) -> dict:
@@ -54,8 +59,9 @@ def _geokeys(page) -> dict:
     return keys
 
 
-def page_grid(page, path: str = "") -> tuple[Grid, float | None]:
-    """Grid and nodata of a GeoTIFF page, without reading pixels."""
+def page_grid(page, path: str = "", square: bool = True) -> tuple[Grid, float | None]:
+    """Grid and nodata of a GeoTIFF page, without reading pixels. With square=False,
+    pixels may be non-square (Grid.res_y is then set)."""
     scale = page.tags.get(33550)
     tie = page.tags.get(33922)
     if 34264 in page.tags:
@@ -70,8 +76,11 @@ def page_grid(page, path: str = "") -> tuple[Grid, float | None]:
         y0 = t[4] + t[1] * sy
     else:
         raise ValueError(f"{path}: no georeferencing tags")
+    res_y = None
     if abs(sx - sy) > 1e-6 * max(sx, sy):
-        raise ValueError(f"{path}: non-square pixels ({sx} x {sy}) are not supported")
+        if square:
+            raise ValueError(f"{path}: non-square pixels ({sx} x {sy}) are not supported")
+        res_y = float(sy)
     keys = _geokeys(page)
     if keys.get(GT_RASTER_TYPE, 1) == 2:  # PixelIsPoint: tie point at pixel centre
         x0 -= sx / 2
@@ -86,7 +95,7 @@ def page_grid(page, path: str = "") -> tuple[Grid, float | None]:
         except ValueError:
             nodata = None
     h, w = page.shape[:2]
-    return Grid(float(x0), float(y0), float(sx), w, h, epsg), nodata
+    return Grid(float(x0), float(y0), float(sx), w, h, epsg, res_y), nodata
 
 
 def read(path: Path, band_first: bool = False):
@@ -118,7 +127,7 @@ def _geotags(grid: Grid, nodata: float | None = None) -> list:
                PROJECTED_CS_TYPE, 0, 1, epsg,
                PROJ_LINEAR_UNITS, 0, 1, 9001]     # metres
     extratags = [
-        (33550, "d", 3, (grid.res, grid.res, 0.0), True),
+        (33550, "d", 3, (grid.res, grid.ry, 0.0), True),
         (33922, "d", 6, (0.0, 0.0, 0.0, grid.x0, grid.y0, 0.0), True),
         (34735, "H", len(geokeys), geokeys, True),
     ]
@@ -154,7 +163,7 @@ class TileReader:
         self.page = p = self.tf.pages[0]
         if not p.is_tiled:
             raise ValueError(f"{path}: not a tiled GeoTIFF")
-        self.grid, self.nodata = page_grid(p, self.path)
+        self.grid, self.nodata = page_grid(p, self.path, square=False)
         self.tw, self.th = p.tilewidth, p.tilelength
         self.ntx = (p.imagewidth + self.tw - 1) // self.tw
         self.nty = (p.imagelength + self.th - 1) // self.th
@@ -197,3 +206,38 @@ def write_tiled_rgba(path: Path, grid: Grid, tile_iter, tile: int, overviews=Non
                  extratags=_geotags(grid), **opts)
         for level in (overviews() if overviews else []):
             tw.write(level, subfiletype=1, **opts)
+
+
+def write_mapped(rd: TileReader, out: Path, fn):
+    """Write a copy of an RGB(A) raster with fn applied to every tile (tile x tile x 4
+    uint8 -> same), as a tiled GeoTIFF with overviews, tile by tile."""
+    g, tile = rd.grid, rd.tw
+    hh, hw = (g.height + 1) // 2, (g.width + 1) // 2
+    half = np.zeros((hh, hw, 4), np.uint8)
+
+    def tiles():
+        for r0, c0, t in rd.tiles():
+            t = np.ascontiguousarray(t)
+            if t.shape[2] == 3:
+                t = np.concatenate([t, np.full(t.shape[:2] + (1,), 255, np.uint8)], 2)
+            o = fn(t, r0, c0)
+            o[t[..., 3] == 0, :3] = 0
+            o[..., 3] = t[..., 3]
+            small = cv2.resize(o, (tile // 2, tile // 2), interpolation=cv2.INTER_AREA)
+            small[..., 3] = np.where(small[..., 3] > 127, 255, 0)
+            hr, hc = r0 // 2, c0 // 2
+            ph, pw = min(tile // 2, hh - hr), min(tile // 2, hw - hc)
+            if ph > 0 and pw > 0:
+                half[hr:hr + ph, hc:hc + pw] = small[:ph, :pw]
+            yield o
+
+    def overviews():
+        levels, cur = [half], half
+        while min(cur.shape[:2]) > 1024:
+            cur = cv2.resize(cur, ((cur.shape[1] + 1) // 2, (cur.shape[0] + 1) // 2),
+                             interpolation=cv2.INTER_AREA)
+            cur[..., 3] = np.where(cur[..., 3] > 127, 255, 0)
+            levels.append(cur)
+        return levels
+
+    write_tiled_rgba(out, g, tiles(), tile, overviews)

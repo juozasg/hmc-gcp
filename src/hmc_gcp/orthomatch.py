@@ -17,13 +17,15 @@ import cv2
 import numpy as np
 
 from . import geotiff
-from .geotiff import Grid, TileReader
+from .geotiff import TileReader
 
 LOW, HIGH = 6, 249  # pixels with a channel outside this range are not used for the ratio
 
 
-def _accumulate(rd: TileReader, X0: float, Y0: float, cell: float, gw: int, gh: int):
-    """Per-cell sums of R, G, B and pixel counts of the valid pixels of a raster."""
+def _accumulate(rd: TileReader, X0: float, Y0: float, cell: float, gw: int, gh: int,
+                lut: np.ndarray | None = None):
+    """Per-cell sums of R, G, B (through lut, if given) and pixel counts of the valid
+    pixels of a raster."""
     g = rd.grid
     sums = np.zeros((3, gh * gw))
     cnt = np.zeros(gh * gw)
@@ -38,15 +40,16 @@ def _accumulate(rd: TileReader, X0: float, Y0: float, cell: float, gw: int, gh: 
         if not ok.any():
             continue
         xs = g.x0 + (c0 + np.arange(w) + 0.5) * g.res
-        ys = g.y0 - (r0 + np.arange(h) + 0.5) * g.res
+        ys = g.y0 - (r0 + np.arange(h) + 0.5) * g.ry
         cx = np.floor((xs - X0) / cell).astype(np.int64)
         cy = np.floor((Y0 - ys) / cell).astype(np.int64)
         ok &= ((cx >= 0) & (cx < gw))[None, :] & ((cy >= 0) & (cy < gh))[:, None]
         idx = (cy[:, None] * gw + cx[None, :])[ok]
         cnt += np.bincount(idx, minlength=gh * gw)
         for k in range(3):
-            sums[k] += np.bincount(idx, weights=rgb[..., k][ok].astype(np.float64),
-                                   minlength=gh * gw)
+            v = rgb[..., k][ok]
+            v = lut[v] if lut is not None else v.astype(np.float64)
+            sums[k] += np.bincount(idx, weights=v, minlength=gh * gw)
     return sums.reshape(3, gh, gw), cnt.reshape(gh, gw)
 
 
@@ -75,14 +78,14 @@ def run(target: Path, reference: Path, out: Path, window: float = 3.0):
     cell = window / 6.0
     X0, Y0 = g.x0, g.y0
     gw = int(math.ceil(g.width * g.res / cell))
-    gh = int(math.ceil(g.height * g.res / cell))
+    gh = int(math.ceil(g.height * g.ry / cell))
     print(f"Target {g.width} x {g.height} px at {g.res * 100:.1f} cm; reference at "
           f"{rf.grid.res * 100:.1f} cm; window {window:g} m (cells {cell:.2f} m)")
     st, nt = _accumulate(tg, X0, Y0, cell, gw, gh)
     sr, nr = _accumulate(rf, X0, Y0, cell, gw, gh)
     rf.close()
-    need_t = 0.25 * (cell / g.res) ** 2
-    need_r = 0.25 * (cell / rf.grid.res) ** 2
+    need_t = 0.25 * cell * cell / (g.res * g.ry)
+    need_r = 0.25 * cell * cell / (rf.grid.res * rf.grid.ry)
     valid = (nt >= need_t) & (nr >= need_r)
     if valid.sum() < 10:
         raise ValueError("the rasters hardly overlap")
@@ -99,42 +102,17 @@ def run(target: Path, reference: Path, out: Path, window: float = 3.0):
     print("Applied gains range R/G/B: " + ", ".join(
         f"{gains[:, k].min():.3f}-{gains[:, k].max():.3f}" for k in range(3)))
 
-    # apply, tile by tile; collect a half-size copy for the overviews
     tile = tg.tw
-    hh, hw = (g.height + 1) // 2, (g.width + 1) // 2
-    half = np.zeros((hh, hw, 4), np.uint8)
 
-    def tiles():
-        for r0, c0, t in tg.tiles():
-            t = np.ascontiguousarray(t)
-            if t.shape[2] == 3:
-                t = np.concatenate([t, np.full(t.shape[:2] + (1,), 255, np.uint8)], 2)
-            xs = (c0 + np.arange(tile) + 0.5) * g.res / cell - 0.5
-            ys = (r0 + np.arange(tile) + 0.5) * g.res / cell - 0.5
-            mx, my = np.meshgrid(xs.astype(np.float32), ys.astype(np.float32))
-            gain = np.exp(cv2.remap(S, mx, my, cv2.INTER_LINEAR,
-                                    borderMode=cv2.BORDER_REPLICATE))
-            o = t.copy()
-            o[..., :3] = np.clip(t[..., :3] * gain + 0.5, 0, 255).astype(np.uint8)
-            o[t[..., 3] == 0, :3] = 0
-            small = cv2.resize(o, (tile // 2, tile // 2), interpolation=cv2.INTER_AREA)
-            small[..., 3] = np.where(small[..., 3] > 127, 255, 0)
-            hr, hc = r0 // 2, c0 // 2
-            ph, pw = min(tile // 2, hh - hr), min(tile // 2, hw - hc)
-            if ph > 0 and pw > 0:
-                half[hr:hr + ph, hc:hc + pw] = small[:ph, :pw]
-            yield o
+    def apply(t, r0, c0):
+        xs = (c0 + np.arange(tile) + 0.5) * g.res / cell - 0.5
+        ys = (r0 + np.arange(tile) + 0.5) * g.ry / cell - 0.5
+        mx, my = np.meshgrid(xs.astype(np.float32), ys.astype(np.float32))
+        gain = np.exp(cv2.remap(S, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE))
+        o = t.copy()
+        o[..., :3] = np.clip(t[..., :3] * gain + 0.5, 0, 255).astype(np.uint8)
+        return o
 
-    def overviews():
-        levels, cur = [half], half
-        while min(cur.shape[:2]) > 1024:
-            cur = cv2.resize(cur, ((cur.shape[1] + 1) // 2, (cur.shape[0] + 1) // 2),
-                             interpolation=cv2.INTER_AREA)
-            cur[..., 3] = np.where(cur[..., 3] > 127, 255, 0)
-            levels.append(cur)
-        return levels
-
-    geotiff.write_tiled_rgba(out, Grid(g.x0, g.y0, g.res, g.width, g.height, g.epsg),
-                             tiles(), tile, overviews)
+    geotiff.write_mapped(tg, out, apply)
     tg.close()
     print(f"Wrote {out} in {time.time() - t0:.0f} s")

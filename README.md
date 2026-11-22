@@ -168,6 +168,28 @@ with overviews, in the target's grid. It works tile by tile, so it needs little 
 Use the day's own mosaic as reference; if that mosaic was matched to the other day with
 `orthogain --reference`, the ODM orthophoto gets that match too.
 
+### Matching two days: colormatch
+
+`colormatch` changes the colours of one orthophoto to match another of the same place,
+e.g. a sunny day 1 to an overcast day 2:
+
+    uv run hmc-gcp colormatch "day1 odm orthophoto.tif" --reference "day2 odm orthophoto.tif"
+
+It fits one transform for the whole scene (the light is the same everywhere within a
+flight; a local correction would also wipe out real changes between the days). Both are
+averaged in 0.5 m cells (`--cell`), so small misalignments between the days do not matter,
+and the fit uses robust weights, so areas that really changed (moved or wet sand, water)
+are left out of it; the output says how much was used. Methods:
+
+- `gain` (default): gain and offset per channel in linear light, i.e. brightness, colour
+  balance and haze/contrast. A full colour matrix is not used: sand colours are so alike
+  that its channel mixing is poorly determined and would distort other colours.
+- `curves`: gain, then a tone curve per channel from the unchanged areas, to match
+  contrast more closely.
+
+Output: `<target>_match.tif` (or `-o`), tiled with overviews, in the target's grid. Shadows
+from the sun cannot be removed by a colour transform.
+
 ## Quick preview in QGIS: worldfiles
 
 `worldfiles` places the raw photos on the map from their metadata alone, for a rough

@@ -264,6 +264,21 @@ def main(argv=None):
                    help="size of the brightness transfer in metres (default 3); smaller follows "
                         "the reference more closely but carries more of its seams")
 
+    c = sub.add_parser("colormatch",
+                       help="match the colours of an orthophoto (e.g. day 1) to another of the "
+                            "same place (day 2): one robust colour transform for the scene")
+    c.add_argument("target", type=Path, help="orthophoto to change (RGB(A) GeoTIFF, tiled)")
+    c.add_argument("--reference", type=Path, required=True, help="orthophoto to match")
+    c.add_argument("-o", "--out", type=Path,
+                   help="output file (default: <target>_match.tif next to the target)")
+    c.add_argument("--method", choices=["gain", "curves"], default="gain",
+                   help="gain: brightness and colour balance (gain and offset per channel in "
+                        "linear light); curves: also a tone curve per channel to match "
+                        "contrast (default gain)")
+    c.add_argument("--cell", type=float, default=0.5, metavar="M",
+                   help="averaging cell in metres; larger tolerates more misalignment between "
+                        "the days (default 0.5)")
+
     w = sub.add_parser("worldfiles",
                        help="roughly georeference photos from their metadata (one .vrt per "
                             "photo, for previews in QGIS)")
@@ -293,6 +308,14 @@ def main(argv=None):
         try:
             orthorect.run(odm, a.out or odm / "orthorect", a.images, a.res, a.margin, a.interp)
         except (ValueError, FileNotFoundError, RuntimeError) as e:
+            p.error(str(e))
+        return
+    if a.cmd == "colormatch":
+        from . import colormatch
+        out = a.out or a.target.with_name(a.target.stem + "_match.tif")
+        try:
+            colormatch.run(a.target, a.reference, out, a.method, a.cell)
+        except (ValueError, FileNotFoundError) as e:
             p.error(str(e))
         return
     if a.cmd == "orthomatch":
