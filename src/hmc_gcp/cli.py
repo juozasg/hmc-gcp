@@ -268,6 +268,8 @@ def main(argv=None):
     w.add_argument("--height", type=float, metavar="M",
                    help="camera height above ground for photos without a drone height "
                         "(phone photos, e.g. 1.5); they are taken as looking straight down")
+    w.add_argument("--no-overlap", action="store_true",
+                   help="shift photos north (map y) as needed so that no footprints overlap")
     w.add_argument("--heading", type=float, metavar="DEG",
                    help="direction the top of the photo points, degrees from north, for photos "
                         "without a heading or compass direction (default 0 = north)")
@@ -295,8 +297,8 @@ def main(argv=None):
         from . import worldfiles
         out = a.out or a.images / "vrt"
         n = worldfiles.run(a.images, out, a.crs, a.plan, a.height_offset, a.focal35,
-                            a.height, a.heading)
-        print(f"Wrote {n} .vrt files to {out}. In QGIS: drag them into a group "
+                            a.height, a.heading, a.no_overlap)
+        print(f"Wrote {n} .vrt files to {out} (replacing any existing ones). In QGIS: drag them into a group "
               f"(Layer > Add Layer > Add Raster Layer, select all).")
         return
     if not a.images.is_dir():

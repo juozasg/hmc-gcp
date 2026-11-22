@@ -183,6 +183,12 @@ in EXIF, 26 mm (a typical main phone camera) is assumed:
 Phone GPS is good to a few metres, more than the footprint of a photo taken from 1.5 m
 (about 2 x 1.5 m), so treat the position as approximate.
 
+`--no-overlap` moves photos north (map y) just enough that no two footprints overlap,
+so photos taken close together (or with GPS scatter) can all be seen side by side. Photos
+are placed from south to north; each moves only if it overlaps one already placed. This is
+for small sets like phone photos: on an overlapping drone survey it would stack the photos
+far to the north. Existing `.vrt` files are always overwritten.
+
 ## How it works
 
 1. **Predict.** For every photo, the GPS position, height above take-off and gimbal

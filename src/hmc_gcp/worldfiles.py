@@ -61,6 +61,66 @@ def _footprint(sh, height: float, n: int = 3):
     return np.array(pix), np.array(ground)
 
 
+def _corners(sh, gt) -> np.ndarray:
+    """Map corners of a photo's footprint (4 x 2) from its geotransform."""
+    px = np.array([[0, 0], [sh.width, 0], [sh.width, sh.height], [0, sh.height]], float)
+    return np.c_[gt[0] + gt[1] * px[:, 0] + gt[2] * px[:, 1],
+                 gt[3] + gt[4] * px[:, 0] + gt[5] * px[:, 1]]
+
+
+def _hull(pts: np.ndarray) -> np.ndarray:
+    """Convex hull (monotone chain), counter-clockwise."""
+    pts = sorted(map(tuple, pts))
+    if len(pts) <= 2:
+        return np.array(pts)
+
+    def half(seq):
+        h = []
+        for q in seq:
+            while len(h) >= 2 and ((h[-1][0] - h[-2][0]) * (q[1] - h[-2][1])
+                                   - (h[-1][1] - h[-2][1]) * (q[0] - h[-2][0])) <= 0:
+                h.pop()
+            h.append(q)
+        return h
+    lo, up = half(pts), half(reversed(pts))
+    return np.array(lo[:-1] + up[:-1])
+
+
+def _blocked_dy(moving: np.ndarray, fixed: np.ndarray):
+    """Open interval of y shifts for which the convex polygon `moving`, shifted by
+    (0, dy), overlaps `fixed`; None if no shift does. It is where the vertical line x = 0
+    crosses the Minkowski difference fixed - moving."""
+    diff = _hull((fixed[:, None, :] - moving[None, :, :]).reshape(-1, 2))
+    ys = []
+    n = len(diff)
+    for i in range(n):
+        (x1, y1), (x2, y2) = diff[i], diff[(i + 1) % n]
+        if (x1 <= 0 <= x2 or x2 <= 0 <= x1) and x1 != x2:
+            ys.append(y1 + (0 - x1) * (y2 - y1) / (x2 - x1))
+        elif x1 == x2 == 0:
+            ys += [y1, y2]
+    if len(ys) < 2 or max(ys) - min(ys) < 1e-9:
+        return None
+    return min(ys), max(ys)
+
+
+def remove_overlaps(foot: list[np.ndarray]) -> list[float]:
+    """Northward shifts (map y) so that no two footprints overlap. Photos are placed
+    from south to north; each moves up just enough to clear those already placed."""
+    order = sorted(range(len(foot)), key=lambda i: foot[i][:, 1].min())
+    placed: list[np.ndarray] = []
+    shifts = [0.0] * len(foot)
+    for i in order:
+        blocks = sorted(b for q in placed if (b := _blocked_dy(foot[i], q)) is not None)
+        dy = 0.0
+        for lo, hi in blocks:  # smallest dy >= 0 outside every open interval
+            if lo < dy < hi:
+                dy = hi
+        shifts[i] = dy
+        placed.append(foot[i] + [0.0, dy])
+    return shifts
+
+
 def _vrt(sh, img_path: Path, vrt_path: Path, gt, srs_wkt: str, mapping: str) -> str:
     rel = os.path.relpath(img_path, vrt_path.parent).replace("\\", "/")
     bands = []
@@ -83,10 +143,13 @@ def _vrt(sh, img_path: Path, vrt_path: Path, gt, srs_wkt: str, mapping: str) -> 
 
 def run(images: Path, out: Path, crs: str = "EPSG:3346", plan: Path | None = None,
         height_offset: float = 0.0, focal35: float | None = None,
-        height: float | None = None, heading: float | None = None) -> int:
+        height: float | None = None, heading: float | None = None,
+        no_overlap: bool = False) -> int:
     """Write one .vrt per photo in `images` to `out`; returns the number written.
     height: camera height above ground for photos without a drone height (phones);
-    heading: direction of the top of the photo for photos without one (default north)."""
+    heading: direction of the top of the photo for photos without one (default north);
+    no_overlap: shift footprints north so that none overlap. Existing .vrt files with the
+    same names are overwritten."""
     photos = sorted(p for p in Path(images).iterdir() if p.suffix.lower() in EXTS)
     if not photos:
         raise SystemExit(f"No JPG photos in {images}")
@@ -98,6 +161,7 @@ def run(images: Path, out: Path, crs: str = "EPSG:3346", plan: Path | None = Non
     sources: dict[str, int] = {}
     src_f = False
     gsds: list[float] = []
+    done: list = []
     for p in photos:
         sh = read_shot(p)
         if sh.lat is None or sh.lon is None:
@@ -142,12 +206,23 @@ def run(images: Path, out: Path, crs: str = "EPSG:3346", plan: Path | None = Non
         A = np.c_[np.ones(len(pix)), pix]
         cx, *_ = np.linalg.lstsq(A, np.asarray(X), rcond=None)
         cy, *_ = np.linalg.lstsq(A, np.asarray(Y), rcond=None)
-        gt = (cx[0], cx[1], cx[2], cy[0], cy[1], cy[2])
-        vrt = out / (p.stem + ".vrt")
-        vrt.write_text(_vrt(sh, p.resolve(), vrt.resolve(), gt, wkt, mapping), encoding="utf-8")
+        gt = [cx[0], cx[1], cx[2], cy[0], cy[1], cy[2]]
+        done.append((p, sh, gt))
         n_ok += 1
         sources[src] = sources.get(src, 0) + 1
         gsds.append(math.hypot(cx[1], cy[1]) * 100)
+    if no_overlap and len(done) > 1:
+        shifts = remove_overlaps([_corners(sh, gt) for _, sh, gt in done])
+        for (_, _, gt), dy in zip(done, shifts):
+            gt[3] += dy
+        moved = [d for d in shifts if d > 1e-6]
+        if moved:
+            print(f"  --no-overlap: moved {len(moved)} photos north by up to {max(moved):.2f} m")
+        else:
+            print("  --no-overlap: no photos overlapped")
+    for p, sh, gt in done:
+        vrt = out / (p.stem + ".vrt")
+        vrt.write_text(_vrt(sh, p.resolve(), vrt.resolve(), gt, wkt, mapping), encoding="utf-8")
     if gsds:
         heads = ", ".join(f"{v} from {k}" for k, v in sources.items())
         print(f"  {n_ok} photos, ground pixel {min(gsds):.2f}-{max(gsds):.2f} cm, headings: {heads}")
