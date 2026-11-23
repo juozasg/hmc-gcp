@@ -210,6 +210,32 @@ vegetation and of the dune itself are only partly found, because the DSM capture
 poorly; `--search` (default 0.3 m) widens the area checked around predicted shadows.
 Slope shading is not corrected. `--mask` also writes the predicted shadow mask.
 
+### Quartz, heavy minerals and shadow: unmix
+
+`unmix` splits each pixel's colour into fractions of three picked materials:
+
+    uv run hmc-gcp unmix "<orthophoto>.tif" --quartz E N --minerals E N --shadow E N
+
+Give map coordinates (LKS94 by default, as shown in QGIS; `--crs` for others) of clean
+quartz sand, a pure heavy-mineral lamina, and quartz sand in full shadow (not a black
+pixel: sky-lit shadow is bluish, which is what tells it apart from dark minerals). The
+colour is averaged within `--radius` (default 5 cm) of each point. Each pixel is solved
+in linear light for fractions that are all >= 0 and sum to 1 (fully constrained least
+squares; with three colours this is the closest point of their triangle).
+
+Outputs next to the raster (or in `-o`):
+
+| File | Contents |
+| --- | --- |
+| `<name>_unmix.tif` | bands quartz, minerals, shadow (fraction x 255), residual (distance to the triangle in linear units x 1000: high where none of the three fits, e.g. vegetation, wet sand), valid |
+| `<name>_minerals.tif` | shadow-free mineral share h / (q + h), 1-255 (1 = none, 255 = all minerals); 0 = no data or deep shadow (shadow fraction above `--max-shadow`, default 0.7) |
+
+Minerals and shadow are both dark; they are told apart only by the shadow's blue tint, so
+the result is best on sunny days with clearly bluish shadows (a warning is printed when the
+three colours are hardly separable). On an overcast day with no shadows, pick a shadow
+point in whatever shade there is, or expect the shadow fraction to stay near 0. Pick the
+points separately on each day, or use colour-matched images with the same points.
+
 ## Quick preview in QGIS: worldfiles
 
 `worldfiles` places the raw photos on the map from their metadata alone, for a rough

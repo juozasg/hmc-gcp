@@ -187,6 +187,20 @@ class TileReader:
         a = np.asarray(a).reshape(self.th, self.tw, -1)
         return a
 
+    def read_window(self, c0: int, r0: int, w: int, h: int) -> np.ndarray:
+        """Pixels [r0:r0+h, c0:c0+w] (clipped to the image; outside stays 0)."""
+        g = self.grid
+        out = np.zeros((h, w, self.bands), np.uint8)
+        for tr in range(max(0, r0) // self.th, min(g.height - 1, r0 + h - 1) // self.th + 1):
+            for tc in range(max(0, c0) // self.tw, min(g.width - 1, c0 + w - 1) // self.tw + 1):
+                t = self.tile(tr, tc)
+                ys, xs = tr * self.th - r0, tc * self.tw - c0
+                a0, b0 = max(0, ys), max(0, xs)
+                a1, b1 = min(h, ys + self.th), min(w, xs + self.tw)
+                if a1 > a0 and b1 > b0:
+                    out[a0:a1, b0:b1] = t[a0 - ys:a1 - ys, b0 - xs:b1 - xs]
+        return out
+
     def tiles(self):
         """All tiles in file order: (row0, col0, array)."""
         for tr in range(self.nty):
@@ -241,3 +255,52 @@ def write_mapped(rd: TileReader, out: Path, fn):
         return levels
 
     write_tiled_rgba(out, g, tiles(), tile, overviews)
+
+
+def write_tiled_bands(path: Path, grid: Grid, tile_iter, tile: int, bands: int,
+                      names: list[str] | None = None, nodata: float | None = None,
+                      overviews=None):
+    """Stream a multi-band uint8 image (grey bands, no colour meaning) to a tiled zlib
+    GeoTIFF, with optional band names (shown in QGIS) and overviews."""
+    big = grid.width * grid.height * bands > 3_000_000_000
+    tags = _geotags(grid, nodata)
+    if names:
+        items = "".join(f'<Item name="DESCRIPTION" sample="{i}" role="description">{n}</Item>'
+                        for i, n in enumerate(names))
+        tags.append((42112, "s", 0, f"<GDALMetadata>{items}</GDALMetadata>", True))
+    shape = (grid.height, grid.width) + ((bands,) if bands > 1 else ())
+    opts = dict(tile=(tile, tile), compression="zlib", predictor=True,
+                photometric="minisblack", metadata=None)
+    if bands > 1:
+        opts["planarconfig"] = "contig"
+        opts["extrasamples"] = ["unspecified"] * (bands - 1)
+    with tifffile.TiffWriter(str(path), bigtiff=big) as tw:
+        tw.write(tile_iter, shape=shape, dtype=np.uint8, extratags=tags, **opts)
+        for level in (overviews() if overviews else []):
+            tw.write(level, subfiletype=1, **opts)
+
+
+class HalfCollector:
+    """Collects a half-size copy of a tiled image while it is streamed, for overviews."""
+
+    def __init__(self, height: int, width: int, bands: int, tile: int):
+        self.tile = tile
+        self.half = np.zeros(((height + 1) // 2, (width + 1) // 2) + ((bands,) if bands > 1 else ()),
+                             np.uint8)
+
+    def add(self, r0: int, c0: int, t: np.ndarray, nearest: bool = False):
+        small = cv2.resize(t, (self.tile // 2, self.tile // 2),
+                           interpolation=cv2.INTER_NEAREST if nearest else cv2.INTER_AREA)
+        hh, hw = self.half.shape[:2]
+        hr, hc = r0 // 2, c0 // 2
+        ph, pw = min(self.tile // 2, hh - hr), min(self.tile // 2, hw - hc)
+        if ph > 0 and pw > 0:
+            self.half[hr:hr + ph, hc:hc + pw] = small[:ph, :pw]
+
+    def levels(self, nearest: bool = False):
+        out, cur = [self.half], self.half
+        while min(cur.shape[:2]) > 1024:
+            cur = cv2.resize(cur, ((cur.shape[1] + 1) // 2, (cur.shape[0] + 1) // 2),
+                             interpolation=cv2.INTER_NEAREST if nearest else cv2.INTER_AREA)
+            out.append(cur)
+        return out

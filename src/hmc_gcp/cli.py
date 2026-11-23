@@ -308,6 +308,23 @@ def main(argv=None):
     sh.add_argument("--band", type=float, default=0.3, metavar="M",
                     help="width of the inside/outside bands used for calibration (default 0.3)")
 
+    u = sub.add_parser("unmix",
+                       help="unmix an RGB orthophoto into quartz, heavy-mineral and shadow "
+                            "fractions from three picked map points")
+    u.add_argument("raster", type=Path, help="orthophoto (RGB(A) GeoTIFF, tiled)")
+    for name, what in (("quartz", "clean quartz sand"), ("minerals", "pure heavy-mineral lamina"),
+                       ("shadow", "quartz sand in full shadow")):
+        u.add_argument(f"--{name}", type=float, nargs=2, required=True, metavar=("E", "N"),
+                       help=f"map coordinate of {what}")
+    u.add_argument("--crs", default="EPSG:3346",
+                   help="CRS of the coordinates (default EPSG:3346, LKS94, as in QGIS)")
+    u.add_argument("--radius", type=float, default=0.05, metavar="M",
+                   help="average the colour within this radius of each point (default 0.05)")
+    u.add_argument("--max-shadow", type=float, default=0.7,
+                   help="mask the mineral share where the shadow fraction is above this "
+                        "(default 0.7)")
+    u.add_argument("-o", "--out", type=Path, help="output folder (default: next to the raster)")
+
     w = sub.add_parser("worldfiles",
                        help="roughly georeference photos from their metadata (one .vrt per "
                             "photo, for previews in QGIS)")
@@ -337,6 +354,14 @@ def main(argv=None):
         try:
             orthorect.run(odm, a.out or odm / "orthorect", a.images, a.res, a.margin, a.interp)
         except (ValueError, FileNotFoundError, RuntimeError) as e:
+            p.error(str(e))
+        return
+    if a.cmd == "unmix":
+        from . import unmix
+        pts = {"quartz": tuple(a.quartz), "minerals": tuple(a.minerals), "shadow": tuple(a.shadow)}
+        try:
+            unmix.run(a.raster, pts, a.crs, a.out, a.radius, a.max_shadow)
+        except (ValueError, FileNotFoundError) as e:
             p.error(str(e))
         return
     if a.cmd == "shadows":
